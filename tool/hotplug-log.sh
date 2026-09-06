@@ -37,14 +37,17 @@ snapshot() {
 	done)
 	dpms=$(timeout 5 xset q 2>/dev/null | grep -A1 'DPMS' | tail -1 | tr -s ' ' | sed 's/^ *//')
 	outputs=$(timeout 5 xrandr --query 2>/dev/null | grep ' connected' | cut -d' ' -f1 | tr '\n' ',')
-	locker=$(pgrep -c -x kdesktop_lock 2>/dev/null || echo 0)
-	# CPU of the lock helper discriminates between the two shapes a hang can
-	# take: a spin loop burns a core, a block sits at zero. kdesktop_lock has
-	# an unbounded self-rescheduling loop in its display-resize path
-	# (doDesktopResizeFinish, 0 ms singleShot while closeCurrentWindow keeps
-	# returning true), so this is the number that would tell them apart.
-	lockcpu=$(ps -C kdesktop_lock -o %cpu= 2>/dev/null | tr -d ' ' | paste -sd, -)
-	echo "lid=$lid | $connectors| dpms=[$dpms] | xrandr=$outputs | kdesktop_lock=$locker cpu=${lockcpu:-none}"
+	# CPU discriminates between the two shapes a hang can take: a spin loop
+	# burns a core, a block sits at zero. It is deliberately NOT keyed to one
+	# desktop -- the fault has been seen under both TDE and Plasma, and more
+	# often under Plasma, so anything TDE-specific would miss half the
+	# evidence. Sample the X server, any locker that happens to be present,
+	# and whatever is busiest.
+	locker=$(pgrep -a -x 'kdesktop_lock|kscreenlocker_greet|xsecurelock|i3lock' \
+		2>/dev/null | awk '{printf "%s ", $2}')
+	xcpu=$(ps -C Xorg -o %cpu= 2>/dev/null | tr -d ' ' | paste -sd, -)
+	top=$(ps -eo pcpu=,comm= --sort=-pcpu 2>/dev/null | head -1 | tr -s ' ' | sed 's/^ *//')
+	echo "lid=$lid | $connectors| dpms=[$dpms] | xrandr=$outputs | locker=[${locker:-none}] xorg_cpu=${xcpu:-none} top=[$top]"
 }
 
 trap 'echo "$(stamp)  STOP  signalled" >> "$LOG"; exit 0' INT TERM

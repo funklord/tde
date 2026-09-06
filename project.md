@@ -345,6 +345,54 @@ There are also nine unbounded `while (mDialogControlLock == true)` spins in
 that file, none with a timeout. Four are in the FIFO command handler, which
 has no consumer on this system and therefore never runs.
 
+### The fault is not TDE-specific, which demotes the lead above
+
+Reported by the copyright holder 2026-09-06: the hang was seen under **KDE
+Plasma as well, and more frequently there**. That is the single most
+useful fact in this entry and it points away from everything TDE does.
+
+Plasma never runs `kdesktop_lock`. So the resize loop above cannot be the
+cause of the Plasma occurrences, and a fault appearing in two independent
+desktops -- more often in the one *without* that code -- is most likely
+below both of them: the i915 driver, the DisplayPort alt-mode path, the
+USB-C controller, or firmware. The lead stays recorded because it is a
+real defect and might aggravate matters under TDE, but it is no longer the
+prime suspect and must not be treated as one.
+
+The journal boot list is consistent with a long-standing fault rather than
+a new one: of seven completed boots, four ended with no shutdown marker in
+the entries this account can see -- though that is a weak proxy, since the
+user journal need not record a shutdown at all.
+
+### Xorg's logs are readable and hold nothing useful
+
+`/var/log/Xorg.0.log` and `.old` are world-readable, which made them worth
+trying. They record the initial modeset and then nothing about runtime
+output changes -- the modesetting driver is silent about RandR
+reconfiguration. Their only errors are input-device noise: touchpad jump
+discards and "event processing lagging behind by 1036ms, your system is
+too slow", which is a stall indicator worth remembering but is not a
+display event.
+
+So the kernel log remains the only source that would show a hotplug fault,
+and it cannot be read here.
+
+### An instrument hazard on this machine, found the hard way
+
+**`grep` here is `ugrep`, and it silently skips files it decides are
+binary.** `/var/log/Xorg.0.log.old` is "Non-ISO extended-ASCII text", so
+every search over it returned nothing -- including a search for a string
+visible in its own header. No error, no message, exit 1.
+
+It was caught only because a file that documents `(EE)` and `(WW)` in its
+own header reported zero of both. The counts previously taken from
+`~/.xsession-errors` were re-measured with `-a` and are unaffected, that
+file being plain ASCII: 83 lock-socket warnings, and BadWindow now 578
+where it was 566, the session having run on since.
+
+Pass `-a` when grepping any log on this machine, and treat an empty result
+over a file whose encoding is unknown as unmeasured rather than clean.
+
 ### What would confirm or refute it
 
 A spin loop and a blocked wait look identical from outside and differ in
