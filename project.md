@@ -263,6 +263,106 @@ None of these has been evaluated for correctness yet.
   fontconfig-2.18, twin sizing. A rebuild from `r14.1.x` is worth something
   on its own.
 
+## Building: master cannot be built on this machine
+
+Measured 2026-09-06, and it shapes the whole workflow.
+
+**Both repositories' `master` targets unreleased R14.2 tdelibs.** They
+include headers that tdelibs 14.1.6 does not ship, so a build against the
+installed desktop fails at the first compile:
+
+    tdepowersave master   src/inactivity.h:24      tdeprocess.h
+    tdebase master        kdesktop/lockeng.h:11    tdeprocess.h
+                          kcontrol/.../bgrender.cpp    tdestandarddirs.h
+                          kcontrol/.../bgsettings.cpp  tdesimpleconfig.h
+
+    $ ls /opt/trinity/include/ | grep -E '^(k|tde)process\.h'
+    kprocess.h
+    $ dpkg -S /opt/trinity/include/tdeprocess.h
+    (no package -- the header does not exist at 14.1.6)
+
+The `k` to `tde` header rename is part of the divergence recorded above.
+So the workflow has a wrinkle worth stating plainly: **develop on `master`,
+where it cannot be compiled here, and test the `r14.1.x` backport.** That
+inverts the usual arrangement, where you develop where you can run the
+result. A patch is therefore never proven by the branch it is submitted on;
+what is proven is the backport, and the two must be kept honest by
+diffstat.
+
+### The recipe that works
+
+    cmake -S tdepowersave -B build/<name> \
+          -DCMAKE_INSTALL_PREFIX=<stage> -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    make -C build/<name> -j12
+
+    cmake -S tdebase -B build/<name> -DBUILD_KDESKTOP=ON -DBUILD_LIBKONQ=ON \
+          -DCMAKE_INSTALL_PREFIX=<stage> -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+`BUILD_ALL` defaults off in tdebase, so components are named individually.
+`BUILD_LIBKONQ=ON` is not optional: kdesktop includes
+`/opt/trinity/share/cmake/libkonq.cmake`, only `tdelibs.cmake` is installed
+there, and no `libkonq4-trinity-dev` package exists on this machine -- so
+libkonq must be built from source beside it.
+
+**Nothing is ever installed.** `CMAKE_INSTALL_PREFIX` points at `stage/`
+precisely so that a stray `make install` cannot overwrite the running
+desktop under `/opt/trinity`.
+
+## Build results for #779 and #47
+
+Both backport cleanly onto `r14.1.x` and both compile with **zero
+warnings**. The backports are faithful: the diffstat against the stable
+branch matches the diffstat of the original PR against its own base, which
+is what says the transplant changed nothing.
+
+    #47   1 commit  onto r14.1.x   353 insertions, 30 deletions   matches
+    #779  3 commits onto r14.1.x  1439 insertions, 37 deletions   matches
+
+Verified in the artifacts rather than from make's exit status:
+
+    screen::setDPMSInhibited(bool)            in screen.cpp.o
+    SaverEngine::notifyIdleInhibitionChanged()  in libtdeinit_kdesktop.so
+    SaverEngine::setIdleInhibited(bool)         in libtdeinit_kdesktop.so
+    ScreenSaverService::createInterface(...)    in libdbusscreensaverservice.a
+    TDEDbusScreenSaver::configureService()      in libdbusscreensaverservice.a
+
+Local branches: `pr47` and `pr779` are the PRs as submitted; `pr47-r141x`
+and `pr779-r141x` are the buildable backports.
+
+### What the pair actually does, and what it does not
+
+Two transports, which the titles do not convey:
+
+- Applications inhibit through **D-Bus**, `org.freedesktop.ScreenSaver`,
+  which is #779's new interface in kdesktop.
+- kdesktop then tells tdepowersave over **DCOP** -- #779 emits
+  `idleInhibitionChanged(bool)` from `SaverEngine`, and #47 adds the
+  matching slot.
+
+So this is a modern *inhibition* path bolted onto the existing DCOP
+plumbing. **It is not a move to modern locking, and it touches neither
+confirmed bug above.**
+
+### Review findings on #47
+
+- **Sound logic.** `applyDPMSSettings()` returns early while inhibited, so
+  scheme timeouts cannot overwrite the saved DPMS snapshot;
+  `setSchemeSettings()` was rerouted through it; and
+  `handleDCOPApplicationRemoved()` restores normal handling if kdesktop
+  dies. The one `setDPMSTimeouts()` call that bypasses the guard is in
+  `_quit()`, restoring defaults on exit, where unguarded is correct.
+- **Indentation is wrong for the file it patches**, and this is worth
+  reporting upstream:
+
+        PR 47 added lines       5 tab-indented,  74 space-indented
+        screen.cpp on master  448 tab-indented,  10 space-indented
+
+  It also introduces `m_`-prefixed members into a file using bare names
+  (`autoDimmDown`, `got_XScreensaver`). The prefix is arguably the author's
+  to choose; the indentation is TDE's own convention in TDE's own file.
+
+Neither has been run yet. Building is not behaving.
+
 ## Open questions
 
 - Whether the tdepowersave **lock layer** is patched or replaced. Findings

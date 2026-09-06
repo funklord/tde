@@ -2,3 +2,7 @@
 # `make upstream`; they carry their own history and are never committed here.
 /tdebase/
 /tdepowersave/
+
+# Build output and staging prefixes. Never installed over /opt/trinity.
+/build/
+/stage/
