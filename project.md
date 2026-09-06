@@ -422,13 +422,58 @@ counter wraps. `UnInhibit` clears the SaverEngine inhibition *before*
 dropping the last cookie and keeps the cookie if the DCOP call fails, so
 internal state cannot drift from the engine's. Not exercised yet.
 
-### Still untested, and it needs a display
+### The pair works end to end -- measured on a nested display
 
-Nothing above runs kdesktop or tdepowersave. What the builds and this probe
-establish is that the code compiles, links, and that one guard can observe
-what it needs to. Whether the pair actually suppresses DPMS and autosuspend
-end to end is unmeasured, and measuring it needs an X server -- a nested one
-(`Xvfb` or `Xephyr`, neither installed) rather than the live session.
+`test/inhibit-chain/` runs the patched `kdesktop` and `tdepowersave` from
+`stage/` on display `:9` under a private D-Bus session and a private
+`TDEHOME`. Nothing touches `:0`, the live DCOP, or `~/.trinity`. Measured
+2026-09-06:
+
+    kdesktop registered on DCOP; org.freedesktop.ScreenSaver claimed
+    tdepowersave registered on DCOP
+    Inhibit("harness", "end-to-end probe")  ->  uint32 1
+
+    KDE: Inhibit: cookie(1), application(harness), reason(end-to-end probe)
+    TPS: WARNING: Could not inhibit DPMS
+    KDE: Removing inhibitor cookie(1) for disconnected D-Bus client(:1.2)
+
+Those three lines are the whole chain: kdesktop accepted the D-Bus call,
+tdepowersave's slot ran, and the cookie was released when the client
+vanished.
+
+**The tdepowersave warning is the evidence, not a fault.**
+`screen::setDPMSInhibited()` returns false when the server has no DPMS
+extension, so that line appears only if the D-Bus to DCOP to slot chain
+reached it. Its absence would mean a break. This is the probe-placement rule
+paying off: the observable was chosen because it can only be produced by the
+thing under test.
+
+**The third line is the leak guard firing in the real program.**
+`test/dbus-signal-delivery/` established in isolation that the signal
+arrives; here the production code path released a dead client's cookie
+unprompted. Two independent observations, one synthetic and one real.
+
+### The ceiling: no nested server has DPMS
+
+Neither Xvfb nor Xephyr provides the DPMS extension, with or without
+`+extension DPMS` -- both answer "Server does not have the DPMS Extension".
+So **the final X call, actually zeroing and restoring the DPMS timeouts,
+cannot be observed on any nested display.** Everything up to that call is
+confirmed; the call itself is not, and confirming it needs the real display
+and therefore a session that can be restarted.
+
+### An orphan escaped the trap, and why
+
+The first harness run left `dcopserver --nosid` reparented to init. It
+daemonises unless given `--nofork`, so the recorded `$!` was a parent that
+exited while the real daemon outlived the EXIT trap. It was killed by hand
+after being distinguished from the live session's two `dcopserver [tdeinit]`
+processes by start time -- 32 seconds against three days.
+
+Fixed by passing `--nofork` and by having the trap also sweep processes
+matching the private `TDEHOME`, a path no other session on this machine can
+produce. Recorded because a PID list reads like complete cleanup and is not
+one whenever a child forks.
 
 ## Open questions
 

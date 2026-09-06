@@ -11,3 +11,6 @@
 /test/dbus-signal-delivery/probe
 /test/dbus-signal-delivery/moc_probe.cpp
 /test/dbus-signal-delivery/control.log
+
+# Session scratch: logs and harness output. Never committed.
+/scratch/
