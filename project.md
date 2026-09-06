@@ -728,6 +728,60 @@ matching the private `TDEHOME`, a path no other session on this machine can
 produce. Recorded because a PID list reads like complete cleanup and is not
 one whenever a child forks.
 
+## Deploying the fixes on this machine
+
+Built as Debian packages rather than copied binaries, so installing and
+reverting are each one apt command and the package manager keeps track.
+Local versions carry a `+lockfix1` / `+lidfix1` suffix, which sorts above
+the repository's `+0` -- so apt will not silently undo them, and a genuine
+14.1.7 from upstream will supersede them when it appears.
+
+Built from `scratch/pkg/`, patched from the `r14.1.x` branches.
+
+    tdepowersave-trinity_...+lidfix1_amd64.deb     the docked-lid feature
+    kdesktop-trinity_...+lockfix1_amd64.deb        the control FIFO fix
+    tdm-trinity_...+lockfix1_amd64.deb             the session class fix
+
+Only those three binary packages are installed. The tdebase source builds
+around thirty-five, and replacing konqueror, konsole and kicker to fix two
+bugs would be out of all proportion to the change.
+
+### The risk, and the way back
+
+**tdm is the display manager.** If a broken one is installed there is no
+graphical login at next boot. **Confirm a text console works before
+rebooting** -- Ctrl+Alt+F2, log in there -- because that is the recovery
+path, and finding out it does not work after the reboot is the bad order
+to learn it in.
+
+**kdesktop_lock guards the locked screen.** A broken one means a lock that
+cannot be dismissed. Same recovery: a text console, then
+`pkill kdesktop_lock`.
+
+Reverting any of them is one command per package:
+
+    sudo apt install --reinstall tdm-trinity kdesktop-trinity tdepowersave-trinity
+
+That pulls the stock `4:14.1.6-0debian13.0.0+0` back from the TDE
+repository, because `--reinstall` names the archive version rather than
+the locally-built one.
+
+### Verifying afterwards
+
+`tool/verify-fixes.sh` reads logind, the socket directory and the session
+log, changes nothing, and runs once. Run it after a reboot, and again after
+locking the screen once.
+
+**It was run against the unpatched system first and reported three
+failures**, which is what makes a later pass worth anything: `Class=greeter`,
+`CanLock=no`, and a `tdepowersave` binary with no `ignoreLidCloseWhenDocked`
+in it. A check never seen to fail is not evidence.
+
+It picks the session from `XDG_SESSION_ID`, falling back to the row with a
+real seat. The first version scanned for the user's sessions and took the
+first, which is the systemd user manager -- `Class=manager`, `CanLock=no`
+whatever tdm does, and indistinguishable from the bug being tested for.
+
 ## Open questions
 
 - Whether the tdepowersave **lock layer** is patched or replaced. Findings
