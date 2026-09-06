@@ -424,11 +424,14 @@ be refused.
 
 This is not drift and it is not an exception being claimed. `project.md`
 is where the reasoning lives; the short form is that these rules apply to
-files this project owns, and this project owns no C++.
+files this project owns, and a patch to TDE is not one of them.
 
-Where that stops being true -- if we ever write a program here rather than
-a patch -- the rules above apply to it in full, and this note gets
-narrowed rather than widened.
+**This project does own a little C++**, under `test/`, and the rules above
+apply to it in full. That was got wrong once: this section used to say the
+project owned no C++ at all, which stopped being true the moment a probe
+was written, and `make style` caught 28 violations in two files nobody had
+run it over yet. Generated output beside it -- `moc_*.cpp` -- is exempt as
+generated source and is named in `.style-gate.toml`.
 
 ### Tooling
 
@@ -437,6 +440,10 @@ narrowed rather than widened.
 
 ### Formatter verdicts
 
-None. This project writes no code of its own, so no formatter has been
-evaluated. Do not run one over the upstream clones: they are somebody
-else's tree, and a reformatted clone cannot produce a reviewable patch.
+No third-party formatter has been evaluated; there is too little code here
+to justify one. `style_gate.py fix` is used on this project's own files and
+carries its own proof -- expanding the leading tabs it wrote back to the
+configured width must reproduce the file it was given, or it refuses.
+
+Do not run any formatter over the upstream clones. They are somebody else's
+tree, and a reformatted clone cannot produce a reviewable patch.

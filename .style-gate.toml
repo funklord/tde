@@ -6,6 +6,7 @@
 # is no .git -- a container that copies the tree in -- would descend into
 # 200 MB of somebody else's C++ and report on it.
 exclude = ["attic", "third_party", "vendor", "build", "target", "dist",
-           ".pytest_cache", ".claude", "tdebase", "tdepowersave"]
+           ".pytest_cache", ".claude", "tdebase", "tdepowersave",
+           "moc_probe.cpp"]
 
 ascii_only = true

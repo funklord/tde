@@ -6,3 +6,8 @@
 # Build output and staging prefixes. Never installed over /opt/trinity.
 /build/
 /stage/
+
+# Generated and built by test/dbus-signal-delivery/Makefile.
+/test/dbus-signal-delivery/probe
+/test/dbus-signal-delivery/moc_probe.cpp
+/test/dbus-signal-delivery/control.log

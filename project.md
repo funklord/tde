@@ -363,6 +363,73 @@ confirmed bug above.**
 
 Neither has been run yet. Building is not behaving.
 
+## Examination without a running X session
+
+The copyright holder cannot restart X, so nothing below touches display
+`:0`. Recorded 2026-09-06.
+
+**Neither project ships any test suite.** No `add_test`, no
+`enable_testing`, nothing under a test directory in either tree. So there
+is nothing upstream to run against these PRs, and any test has to be built.
+
+### The inhibit-leak guard in #779 fires -- tested, after a wrong prediction
+
+An inhibit API's classic failure is a client that dies without calling
+`UnInhibit`, leaving the screensaver suppressed for ever.
+`ScreenSaverInterfaceImpl::handleDBusSignal()` guards it: on
+`NameOwnerChanged` for a unique name that lost its owner, it calls
+`removeInhibitorsForSender()`. The logic is right -- it filters for names
+starting with `:`, a non-empty old owner and an empty new one.
+
+The question was whether the signal ever arrives. `dbus-1-tqt`'s own
+documentation describes only client-side filtering and never mentions a bus
+match rule; the library carries the string `destination='`, and
+`NameOwnerChanged` is a broadcast with no destination. **That reasoning
+predicted the guard could not fire, and it was wrong.**
+
+`test/dbus-signal-delivery/` builds a `TQT_DBusProxy` exactly as
+`ScreenSaverDBusWatcher` does and counts what arrives, against a
+`dbus-monitor` control over the same window:
+
+    probe          8 NameOwnerChanged received
+    dbus-monitor  10 over the same window
+
+Four client connect/disconnect pairs are eight events and the probe caught
+all eight; the control's extra two are its own connection and the probe's.
+The library registers a broad enough match. `make -C test/dbus-signal-delivery test`
+re-runs it, needs no X, and stops itself after six seconds.
+
+The lesson is the one this file keeps relearning: a plausible mechanism read
+out of strings and documentation is not a measurement, and the control is
+what makes "received 0" mean anything.
+
+### Both object paths are exposed, which is not cosmetic
+
+Commit `086f0e25e` publishes the interface on `/ScreenSaver` as well as
+`/org/freedesktop/ScreenSaver`. That matters -- Firefox and Chromium have
+historically called the legacy path -- so this is the difference between the
+feature working for real browsers and only in principle.
+
+The declared interface is `GetActive`, `Lock`, `SetActive`, `Inhibit`,
+`UnInhibit` and the `ActiveChanged` signal. `GetActiveTime` and
+`SimulateUserActivity`, which some implementations carry, are absent. Not
+yet established whether anything here needs them.
+
+### Cookie handling reads correct
+
+`Inhibit` never issues cookie zero and skips a value already live if the
+counter wraps. `UnInhibit` clears the SaverEngine inhibition *before*
+dropping the last cookie and keeps the cookie if the DCOP call fails, so
+internal state cannot drift from the engine's. Not exercised yet.
+
+### Still untested, and it needs a display
+
+Nothing above runs kdesktop or tdepowersave. What the builds and this probe
+establish is that the code compiles, links, and that one guard can observe
+what it needs to. Whether the pair actually suppresses DPMS and autosuspend
+end to end is unmeasured, and measuring it needs an X server -- a nested one
+(`Xvfb` or `Xephyr`, neither installed) rather than the live session.
+
 ## Open questions
 
 - Whether the tdepowersave **lock layer** is patched or replaced. Findings
