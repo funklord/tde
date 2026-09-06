@@ -109,7 +109,44 @@ packages, prefix `/opt/trinity`. Measured 2026-09-06.
 
 Each carries the command that produced it, so it can be re-taken.
 
-### 1. kdesktop_lock cannot create its control socket
+### 1. kdesktop_lock cannot create its control socket -- FIXED
+
+**Fixed 2026-09-06** on `fix/lock-fifo-per-user` (master) and
+`fix/lock-fifo-per-user-r141x` (stable, built and tested). Not yet
+submitted upstream. The diagnosis below stands as the record of the fault.
+
+The FIFOs now come from `TDEGlobal::dirs()->saveLocation("socket")`, the
+per-user per-host socket resource tdelibs creates mode 0700, and both are
+created 0600. `mknod` failures are reported with their errno, `EEXIST` is
+treated as the success it is, and the process-wide `umask(0)` is restored.
+
+**A shared directory was the wrong home regardless of permissions**, and
+this is why the fix moves the path rather than loosening the mode. The
+inbound FIFO accepts commands that dismiss the unlock dialog and display
+arbitrary text (`processInputPipeCommand`, cases `C`, `T`, `E`/`W`/`I`/`K`),
+and the outbound one carries the PIN the user has typed
+(`lockprocess.cpp:2818`). Making the shared directory world-writable so
+each user could create their own nodes would let any local user pre-create
+another user's control socket, drive their lock screen and read their PIN.
+That is a worse fault than the one being repaired.
+
+**Nothing in tdebase reads these FIFOs**, and no binary on this machine
+other than `kdesktop_lock` mentions them -- it is an extension point for
+external interactive-logon modules with no in-tree client. A privileged
+helper running as root still reaches them; a module running as another user
+no longer can, which is the intended loss.
+
+`test/lock-fifo/` proves it against the unpatched build as a control: both
+start from a directory proven empty, the unpatched case reaches the same
+code and fails there, the patched case creates both FIFOs and prints no
+warning. Two earlier versions of that test proved nothing -- one ran the
+system binary because `kdesktop` resolves the helper with
+`TDEStandardDirs::findExe()` regardless of `PATH`, and one measured FIFOs
+left by a previous run. Both are recorded in its README.
+
+#### The fault as found
+
+
 
 `/tmp/tdesocket-global` is created at boot by tdm as `root:root 0755`. The
 lock helper runs as the user and cannot write into it:
