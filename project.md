@@ -176,7 +176,52 @@ the user's helper gets there.
 
 **No branch in tdebase fixes this** -- swept every remote branch.
 
-### 2. tdm registers the user's session as a greeter
+### 2. tdm registers the user's session as a greeter -- FIXED
+
+**Fixed 2026-09-06** on `fix/tdm-session-class` (master) and
+`fix/tdm-session-class-r141x` (stable). Compiles clean; **not runtime
+tested**, because verifying it requires a fresh login through tdm and this
+machine's session cannot be restarted. Not yet submitted upstream.
+
+The misplaced value is dropped from the authentication path and
+`XDG_SESSION_CLASS=user` is set immediately before `pam_open_session()`,
+in the block whose existing comment already reads "the greeter is gone by
+now". The result of `pam_putenv()` is read rather than discarded, as the
+original line discarded it.
+
+**The mechanism is no longer an inference.** It was recorded here as
+unverified; systemd's own source settles it, in
+`src/login/logind-session.h`:
+
+    /* Which session classes have a lock screen concept? */
+    #define SESSION_CLASS_CAN_LOCK(class) \
+            (IN_SET((class), SESSION_USER, SESSION_USER_EARLY))
+
+`SESSION_GREETER` is excluded there and in `SESSION_CLASS_CAN_STOP_ON_IDLE`,
+and those two are the entire difference -- `CAN_IDLE`, `CAN_DISPLAY`,
+`CAN_TAKE_DEVICE` and `CAN_CHANGE_TYPE` all admit a greeter already. So the
+fix restores lockability and stop-on-idle and changes nothing else. The
+`CanLock` property is `SD_BUS_VTABLE_PROPERTY_CONST`, which is why nothing
+can correct this at runtime.
+
+**Structural evidence that the line was simply misplaced:** the tdm backend
+has exactly one `pam_start()`, one `pam_open_session()` and one
+`pam_close_session()`. The greeter has no PAM session of its own, so the
+only session that value ever reached was the user's. It also cannot have
+worked as intended, because pam_systemd acts in the session phase rather
+than the authentication phase.
+
+**A build that proved nothing, kept as a warning.** The first build of this
+fix produced a `tdm` binary containing no `XDG_SESSION_CLASS` string at
+all, because `WITH_PAM` defaults off and the whole `#ifdef USE_PAM` block
+was skipped -- the change was never compiled. `make` exited 0 throughout.
+Rebuilt with `-DWITH_PAM=ON`, the object carries `XDG_SESSION_CLASS=user`
+and the binary carries zero occurrences of `=greeter`, against the system
+binary which carries it. Check the artifact, not the exit status.
+
+#### The fault as found
+
+
 
     $ loginctl show-session c1
     Service=tdm-trinity  Type=x11  Class=greeter  LockedHint=no
