@@ -14,3 +14,7 @@
 
 # Session scratch: logs and harness output. Never committed.
 /scratch/
+
+# Built by test/docked-detect/Makefile.
+/test/docked-detect/probe
+/test/docked-detect/cc.log

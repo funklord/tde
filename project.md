@@ -263,7 +263,43 @@ dialog.
 **`master`'s `screen.cpp` differs from `r14.1.6`'s by two lines** -- one
 `#include` rename and one comment. Every line above is current upstream.
 
-### 4. The lid inhibitor defeats logind's docked handling
+### 4. The lid inhibitor defeats logind's docked handling -- FIXED
+
+**Fixed 2026-09-06** on `feat/lid-docked` (master) and
+`feat/lid-docked-r141x` (stable, built and tested). Not submitted upstream.
+
+`screen::externalDisplayConnected()` asks RandR whether any connector other
+than the built-in panel is connected, and `handleLidEvent()` skips the
+lid-close **action** when it says yes. Only the action is suppressed;
+locking keeps its own setting, which is how logind splits the two. The new
+`ignoreLidCloseWhenDocked` defaults to true, matching logind's own
+`HandleLidSwitchDocked=ignore` -- the default tdepowersave's block
+inhibitor currently prevents the system from ever reaching.
+
+It calls `XRRGetScreenResourcesCurrent` rather than
+`XRRGetScreenResources` deliberately: the latter forces a DDC probe of
+every connector, which is slow and is the last kind of traffic to generate
+from a lid event, particularly on a machine with a display fault under
+investigation.
+
+The panel is identified by name -- `eDP`, `LVDS`, `DSI` -- which is the
+convention every driver follows and the same test other desktops use.
+
+`test/docked-detect/` links **the object the real build produced** rather
+than reimplementing the query, so the test cannot drift from the code:
+
+    :0   eDP-1 connected, laptop panel only     ->  false
+    :9   Xvfb, sole output named "screen"       ->  true
+
+The two disagree, which is what makes the result mean anything. What it
+does not cover is stated in its README: Xvfb's output stands in for *a name
+that is not a panel*, so the RandR query and the name matching are
+exercised and a real hotplug, a real DisplayPort connector and the lid
+event itself are not.
+
+#### The fault as found
+
+
 
     $ systemd-inhibit --list
     TDEPowersave ... handle-lid-switch ... block
