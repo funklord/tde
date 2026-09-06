@@ -728,6 +728,39 @@ matching the private `TDEHOME`, a path no other session on this machine can
 produce. Recorded because a PID list reads like complete cleanup and is not
 one whenever a child forks.
 
+## Confirmed in production, 2026-09-06
+
+All three are installed on this machine and verified on a real session,
+which is a stronger claim than the staging tests that preceded them.
+
+    session c1   before:  Class=greeter  CanLock=no
+                 after:   Class=user     CanLock=yes
+
+    /tmp/tdesocket-nabbe/kdesktoplockcontrol-0       prw------- created on lock
+    /tmp/tdesocket-nabbe/kdesktoplockcontrol_out-0   prw-------
+
+    "unable to create control socket": 83 per session before, 0 after
+
+`tool/verify-fixes.sh` reports `pass=4 fail=0 unknown=0`. It reported
+three failures against the same machine before the install, which is what
+makes the pass worth reading.
+
+Two ordering facts the verification depended on, worth keeping because both
+would have produced a false negative:
+
+- **The tdm fix cannot show in a session older than the install.** The class
+  is fixed at session creation and `CanLock` is const, so the first run
+  after installing still reported `Class=greeter`. It needed a reboot.
+- **The lock helper is resident.** kdesktop pre-spawns
+  `kdesktop_lock --internal` once and signals it to lock, so after an
+  install the running helper is still the old binary --
+  `/proc/<pid>/exe` pointed at a **deleted** inode. Locking before the
+  reboot would have exercised the code being replaced.
+
+**The docked-lid behaviour is still unconfirmed on real hardware.** It needs
+an external display and a lid to close; `test/docked-detect/` reaches the
+RandR query and the name matching and no further.
+
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so installing and
