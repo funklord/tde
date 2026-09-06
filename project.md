@@ -345,24 +345,49 @@ There are also nine unbounded `while (mDialogControlLock == true)` spins in
 that file, none with a timeout. Four are in the FIFO command handler, which
 has no consumer on this system and therefore never runs.
 
-### The fault is not TDE-specific, which demotes the lead above
+### The fault predates TDE, which refutes the lead above
 
-Reported by the copyright holder 2026-09-06: the hang was seen under **KDE
-Plasma as well, and more frequently there**. That is the single most
-useful fact in this entry and it points away from everything TDE does.
+Reported by the copyright holder 2026-09-06: the hang was seen under KDE
+Plasma **before the switch to TDE**, and was **much more frequent then**.
+TDE became the display manager on 2026-07-28. So the fault existed on a
+system that was not running any TDE code, and the resize loop recorded
+below is **refuted as its cause** rather than merely demoted -- it can only
+exist in kdesktop_lock, which Plasma never runs. It stays written down as a
+real defect in its own right and is not this.
 
-Plasma never runs `kdesktop_lock`. So the resize loop above cannot be the
-cause of the Plasma occurrences, and a fault appearing in two independent
-desktops -- more often in the one *without* that code -- is most likely
-below both of them: the i915 driver, the DisplayPort alt-mode path, the
-USB-C controller, or firmware. The lead stays recorded because it is a
-real defect and might aggravate matters under TDE, but it is no longer the
-prime suspect and must not be treated as one.
+That moves the search below both desktops: the i915 driver, the
+DisplayPort alt-mode path, the USB-C controller, or firmware.
 
-The journal boot list is consistent with a long-standing fault rather than
-a new one: of seven completed boots, four ended with no shutdown marker in
-the entries this account can see -- though that is a weak proxy, since the
-user journal need not record a shutdown at all.
+### The frequency drop has two candidate causes, minutes apart
+
+The hang became much less frequent after 2026-07-28. Two things happened
+that morning:
+
+    07:56:09   linux-image-6.12.96 installed, replacing 6.12.90
+    08:00:51   display-manager.service -> tdm.service
+
+**Four minutes apart, and either could account for it.** The desktop change
+is the visible one and the kernel upgrade is at least as likely, so
+attributing the improvement to the switch away from Plasma would be exactly
+the comfortable explanation this file keeps warning about. Nothing measured
+so far separates them.
+
+Kernel history on this machine, from `dpkg.log`: 6.12.63 and 6.12.74
+(2026-04-10, install), 6.12.90 (2026-06-15), 6.12.96 (2026-07-28).
+
+### Two updates are available and neither has been applied
+
+    BIOS      1.36.0, dated 2025-12-23   ->  1.40.0 offered via LVFS
+    kernel    6.12.96                    ->  6.12.107 in the archive
+
+`fwupdmgr get-history` reports **no history at all**, so firmware has never
+been updated on this machine. USB-C DisplayPort alt-mode faults are
+commonly firmware, and this is four BIOS releases behind.
+
+Both are the copyright holder's to apply. **If the aim is to identify the
+cause rather than only to stop the symptom, apply them one at a time with
+enough time between to judge**, because doing both at once repeats the
+2026-07-28 confound and will leave the same question unanswered.
 
 ### Xorg's logs are readable and hold nothing useful
 
