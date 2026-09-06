@@ -1,0 +1,11 @@
+# The shared gate, configured for a project whose product is patches and
+# notes rather than source. See tool/style_gate.py --help.
+
+# The upstream clones are named explicitly rather than left to .gitignore:
+# git discovery would skip them anyway, but the plain walk used when there
+# is no .git -- a container that copies the tree in -- would descend into
+# 200 MB of somebody else's C++ and report on it.
+exclude = ["attic", "third_party", "vendor", "build", "target", "dist",
+           ".pytest_cache", ".claude", "tdebase", "tdepowersave"]
+
+ascii_only = true

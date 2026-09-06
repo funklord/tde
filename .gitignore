@@ -1,0 +1,4 @@
+# Upstream TDE clones. These are somebody else's repositories, fetched with
+# `make upstream`; they carry their own history and are never committed here.
+/tdebase/
+/tdepowersave/
