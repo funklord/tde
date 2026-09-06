@@ -75,7 +75,11 @@ run_case() {
 	echo "  socket dir: $sockdir"
 	rm -f "$sockdir/kdesktoplockcontrol-9" "$sockdir/kdesktoplockcontrol_out-9"
 	rm -f /tmp/tdesocket-global/kdesktoplockcontrol-9
-	echo "  FIFOs present before the run: $(ls "$sockdir"/kdesktoplockcontrol* 2>/dev/null | wc -l)"
+	# Count only display :9's pair. The live session's own -0 FIFOs live in
+	# the same directory and must not be removed, but counting them made the
+	# guard read "2 present" when the display under test was clean, which is
+	# the opposite of what it is for.
+	echo "  FIFOs for :9 present before the run: $(ls "$sockdir"/kdesktoplockcontrol*-9 2>/dev/null | wc -l)"
 
 	timeout 15 "$prefix/bin/kdesktop_lock" --dontlock \
 		> "$LOG/lock-$label.log" 2>&1 &
@@ -84,7 +88,7 @@ run_case() {
 	sleep 8
 
 	echo "  FIFOs in the per-user socket dir:"
-	ls -l "$sockdir"/kdesktoplockcontrol* 2>/dev/null | sed 's/^/    /' \
+	ls -l "$sockdir"/kdesktoplockcontrol*-9 2>/dev/null | sed 's/^/    /' \
 		|| echo "    (none)"
 	echo "  FIFOs in the shared global dir:"
 	ls -l /tmp/tdesocket-global/kdesktoplockcontrol* 2>/dev/null | sed 's/^/    /' \

@@ -761,6 +761,44 @@ would have produced a false negative:
 an external display and a lid to close; `test/docked-detect/` reaches the
 RandR query and the name matching and no further.
 
+## Defects found in my own patches, and fixed
+
+Reviewed 2026-09-06 after the fixes were already installed and working.
+Four, in two of the three patches; the tdm one was clean.
+
+**The FIFO patch kept a umask call it did not need.** The original set
+`umask(0)` process-wide and never restored it; the first version of the fix
+restored it, which is better and still wrong. `ControlPipeHandlerObject::run()`
+is a worker thread, so for that window any file the rest of the process
+created got whatever mode it asked for. It was never needed at all: a umask
+can only clear bits, `0600` has none a sane one would clear, and the `chmod`
+that follows sets the mode outright. Removed rather than repaired.
+
+**It also chmod()ed a file it had failed to create.** Harmless, and sloppy
+in a way that would confuse the next reader. Guarded.
+
+**The docked patch put its `#include` at column 0** inside a tab-indented
+`extern "C"` block -- the exact defect written up against upstream PR 47
+two sections above, committed here in the same session. Reviewing one's own
+patch by the standard applied to somebody else's is apparently not
+automatic.
+
+**And it called RandR with no error handler.** `externalDisplayConnected()`
+runs *while the display is changing*, which is the one moment an output can
+be removed between `XRRGetScreenResourcesCurrent` and `XRRGetOutputInfo`:
+the resource list is a snapshot, and an id the server has since dropped is
+an X error rather than a null return. It runs under the file's own
+`badwindow_handler` now, as every other X call in that file does.
+
+Both rebuilt with no warnings, and both tests re-run against the corrected
+builds and still discriminate.
+
+**A fifth was in the test rather than the patch.** `test/lock-fifo/`
+counted every `kdesktoplockcontrol*` in the socket directory to prove the
+display under test started clean -- including the live session's own `-0`
+pair, which it must not remove. It reported "2 present" for a clean `:9`,
+which is the opposite of what the guard is for. It counts `*-9` now.
+
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so installing and
