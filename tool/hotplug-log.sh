@@ -28,6 +28,11 @@ HEARTBEAT=${HEARTBEAT:-600}
 
 stamp() { date '+%Y-%m-%d %H:%M:%S'; }
 
+# The STABLE state, and only that. Change detection compares this string, so
+# nothing that moves on its own may appear in it: an earlier version folded
+# CPU readings in here and every single tick then counted as a change, at
+# seven or eight entries a minute with the display untouched. That buries
+# the events the log exists to capture and reaches the size cap in days.
 snapshot() {
 	local lid connectors dpms outputs locker
 	lid=$(sed -n 's/^state: *//p' /proc/acpi/button/lid/*/state 2>/dev/null | head -1)
@@ -43,11 +48,20 @@ snapshot() {
 	# often under Plasma, so anything TDE-specific would miss half the
 	# evidence. Sample the X server, any locker that happens to be present,
 	# and whatever is busiest.
-	locker=$(pgrep -a -x 'kdesktop_lock|kscreenlocker_greet|xsecurelock|i3lock' \
-		2>/dev/null | awk '{printf "%s ", $2}')
+	# Presence only, not pids: a restarted locker is not a display event.
+	locker=$(pgrep -c -x 'kdesktop_lock|kscreenlocker_greet|xsecurelock|i3lock' \
+		2>/dev/null || echo 0)
+	echo "lid=$lid | $connectors| dpms=[$dpms] | xrandr=$outputs | lockers=$locker"
+}
+
+# The VOLATILE readings. Recorded on every line but never compared, because
+# a spin loop and a blocked wait differ in exactly these numbers and both
+# would otherwise drown the log in false changes.
+volatile() {
+	local xcpu top
 	xcpu=$(ps -C Xorg -o %cpu= 2>/dev/null | tr -d ' ' | paste -sd, -)
 	top=$(ps -eo pcpu=,comm= --sort=-pcpu 2>/dev/null | head -1 | tr -s ' ' | sed 's/^ *//')
-	echo "lid=$lid | $connectors| dpms=[$dpms] | xrandr=$outputs | locker=[${locker:-none}] xorg_cpu=${xcpu:-none} top=[$top]"
+	echo "xorg_cpu=${xcpu:-none} top=[$top]"
 }
 
 trap 'echo "$(stamp)  STOP  signalled" >> "$LOG"; exit 0' INT TERM
@@ -65,11 +79,11 @@ while [ $i -lt $ticks ]; do
 	now=$(snapshot)
 
 	if [ "$now" != "$prev" ]; then
-		echo "$(stamp)  CHANGE $now" >> "$LOG"
+		echo "$(stamp)  CHANGE $now | $(volatile)" >> "$LOG"
 		prev="$now"
 		since_beat=0
 	elif [ $since_beat -ge $HEARTBEAT ]; then
-		echo "$(stamp)  ..     $now" >> "$LOG"
+		echo "$(stamp)  ..     $now | $(volatile)" >> "$LOG"
 		since_beat=0
 	fi
 
