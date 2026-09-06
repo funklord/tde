@@ -285,22 +285,84 @@ event it queues `checkBrightness()` behind a 50 ms `singleShot`
 (101), 2 `ChangeWindowAttributes` (78), 3 `GetWindowAttributes` (6), in
 bursts coinciding with the lock warnings. Cause not established.
 
-## Open: the USB-C display hang
+## Open: the USB-C display hang -- NOT fixed
 
 Reported by the copyright holder: an occasional hang when a USB-C display
-is connected or disconnected **while the lid is closed**; having a visible
-screen appears to mitigate it. Culprit unknown.
+is connected or disconnected **while the lid is closed**; a visible screen
+appears to mitigate it. **Still not reproduced, and no mechanism is
+established.** What follows is a lead and an instrument, not a repair.
 
-**Not reproduced, and no mechanism is claimed.** Finding 5 is a candidate
--- a hotplug device storm queueing brightness re-enumerations while DPMS
-has been forced off and a lock attempt is in flight -- and "a visible
-screen mitigates it" fits, because an open lid means neither
-`forceDPMSOff()` nor a lock attempt. It fits several other stories equally
-well. Non-reproduction is what "intermittent" means, so an absence of
-symptoms during testing settles nothing.
+### The forensic source is unreadable, and this was measured late
 
-Next step is instrumentation, not reasoning: timestamped RandR events,
-tdehw device events, lid state, DPMS state and lock attempts, size-capped.
+The kernel log cannot be read by this user. `dmesg` answers
+`Operation not permitted`, and the account is in neither `adm` nor
+`systemd-journal`, so `journalctl` shows only its own session's entries --
+3542 of them this boot, all `pppd`, `dhcpcd`, `wpa_supplicant` and systemd
+user units.
+
+**Several searches were run against that log before this was noticed**, and
+each reported no i915 faults, no GPU hangs and no DRM errors. Every one of
+those results was vacuous: an empty result from a log that cannot contain
+kernel messages says nothing whatever. The check that would have caught it
+costs one command and asks what the log actually holds before reading its
+silence.
+
+Granting access is a root action and is the copyright holder's:
+
+    sudo usermod -aG adm,systemd-journal <user>      # takes effect on next login
+
+Until then, a hang leaves no trail that can be read here.
+
+### A lead, in the right code path, and deliberately not acted on
+
+`kdesktop_lock` has an unbounded self-rescheduling loop in exactly the path
+a display hotplug takes. `LockProcess::doDesktopResizeFinish()`
+(`kdesktop/lock/lockprocess.cpp:1075`) is driven by the resize timer whose
+own comment reads *"should allow display switching operations to finish"*.
+It does:
+
+    while (mDialogControlLock == true) { usleep(100000); }
+    mDialogControlLock = true;
+    if (closeCurrentWindow()) {
+            TQTimer::singleShot( 0, this, TQ_SLOT(doDesktopResizeFinish()) );
+            mDialogControlLock = false;
+            return;
+    }
+
+`closeCurrentWindow()` returns true for as long as `mDialogs` is non-empty,
+and a dialog leaves that list only after its `exec()` returns. So a dialog
+that does not close re-schedules this at **0 ms, with no iteration cap and
+no timeout**: a permanent busy loop while the screen is mid-resize.
+
+That is a real defect whether or not it is this hang. It is **not** being
+patched, and the reason is the rule rather than caution: an explanation
+this comfortable, arriving in exactly the right subsystem, is what stops
+anybody looking further. Non-reproduction is what "intermittent" means, so
+a speculative fix followed by a quiet week would prove nothing and would
+retire the investigation.
+
+There are also nine unbounded `while (mDialogControlLock == true)` spins in
+that file, none with a timeout. Four are in the FIFO command handler, which
+has no consumer on this system and therefore never runs.
+
+### What would confirm or refute it
+
+A spin loop and a blocked wait look identical from outside and differ in
+one number: **CPU**. A spin burns a core; a block sits at zero.
+`tool/hotplug-log.sh` samples `kdesktop_lock`'s CPU alongside lid state,
+DRM connector status, DPMS state and RandR outputs, recording on change
+with a periodic heartbeat, and flushing each line as it is written -- so
+the entry immediately before the gap is what a hang leaves behind.
+
+    tool/hotplug-log.sh [logfile]
+
+It needs no root, changes nothing, and stops itself on any of three
+conditions: an 8 MB size cap, a 24 hour time cap, or a signal.
+
+If the next occurrence shows `kdesktop_lock` at high CPU, the loop above is
+the answer and the fix is a bounded retry. If it shows zero, the fault is a
+block and that loop is a red herring -- which is the outcome the entry
+above is written to allow.
 
 ## Upstream work worth reusing before writing anything
 
