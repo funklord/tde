@@ -799,6 +799,29 @@ display under test started clean -- including the live session's own `-0`
 pair, which it must not remove. It reported "2 present" for a clean `:9`,
 which is the opposite of what the guard is for. It counts `*-9` now.
 
+## Submitting upstream
+
+`pr-descriptions.md` holds the three pull request descriptions, ready to
+paste. It is a separate file rather than a section here because it is an
+outbound artifact meant to be copied verbatim into a web form, with a
+different lifecycle from this record: once submitted it is history.
+
+**Nothing has been submitted, and two things block it.** There are no
+credentials for `mirror.git.trinitydesktop.org` on this machine -- no
+`.netrc`, no credential helper, and a push dry-run fails asking for a
+username. And TDE carries the DCO, so each commit needs a
+`Signed-off-by:` -- a statement about provenance that belongs to its
+author and to nobody else. `git commit --amend -s` on each of the six
+branches.
+
+Verified 2026-09-06, after the self-review corrections: every backport
+still matches its master branch, which is what says the transplant changed
+nothing.
+
+    fix/lock-fifo-per-user    2 files, 58 insertions, 13 deletions   both
+    fix/tdm-session-class     1 file,  13 insertions,  1 deletion    both
+    feat/lid-docked           7 files, 101 insertions, 1 deletion    both
+
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so installing and
