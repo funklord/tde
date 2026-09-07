@@ -856,6 +856,118 @@ when its lid closes onto an external display. Disabling an output on lid
 close would turn this path from rare into certain, and it is the wrong
 order to make a known-fragile path routine and then fix it.
 
+## Design: switching off the internal panel on lid close
+
+**Not implemented. Drafted 2026-09-07 for the copyright holder to review.**
+
+### The problem it solves
+
+Closing the lid turns off the backlight. It does not disable the RandR
+output, shrink the desktop or renumber the Xinerama heads. So a docked
+machine with the lid shut keeps a 1920x1080 region of its desktop that is
+physically invisible, and anything placed there is lost. Kicker is only the
+visible symptom, being pinned to head 0; **any** window can land in that
+region, which is why fixing kicker alone would be papering over one case of
+many.
+
+Nothing else on the system does this. There is no display-switcher daemon
+in TDE, so it belongs in the thing that already owns the lid event.
+
+### The risk is smaller than it first appears, and this is why
+
+The obvious fear is a black screen with no way back. Working through it,
+the dangerous case mostly is not one:
+
+- **External unplugged while the lid is shut, internal already off.** No
+  display -- and a closed laptop with no external is a machine showing
+  nothing anyway. The user is not looking at the panel. It resolves the
+  moment the lid opens.
+- **So the whole safety burden falls on one path: re-enable on lid open.**
+  That is a single trigger tdepowersave already handles, and it must fire
+  unconditionally, ignoring any stored state, every time.
+
+What remains genuinely dangerous is narrower:
+
+- **A convertible reporting lid-closed in tablet mode**, where the internal
+  panel is the display in use. The "another enabled output exists" guard
+  covers this in practice, since such a machine rarely has an external
+  attached in that pose -- but the lid switch is lying and no code here can
+  tell.
+- **tdepowersave dying while the output is off.** Nothing would restore it.
+  Answered by a startup self-heal below.
+
+### Invariants
+
+1. **Never disable the last enabled output.** Decided by counting enabled
+   outputs, not by "an external is connected" -- that closes the unplug
+   race, where a check on connectedness passes just as the external goes.
+2. **Verify afterwards that a CRTC is still active, and roll back if not.**
+3. **Re-enable on lid open unconditionally**, whatever state is recorded.
+4. **On startup, if the lid is open and an internal output is disabled,
+   enable it.** This is the crash and restart path, and it costs one check.
+5. **Fail closed.** If no output is recognised as internal, do nothing.
+
+### Identifying the internal panel
+
+The kernel names DRM connectors `<type>-<index>` from a fixed table, so
+`eDP`, `LVDS` and `DSI` are the type rather than a guess, and
+`/sys/class/drm/card*-*/enabled` gives the enabled count invariant 1 needs.
+RandR output names mirror the DRM names for modesetting, intel and amdgpu.
+
+They do not for the proprietary NVIDIA driver, which spells things
+`DFP-0`. There the match simply finds nothing and rule 5 applies: no
+internal output identified, no action. That is the correct failure.
+
+### Mechanism, and the open question in it
+
+Shelling out to `xrandr` is the cheap route and matches what the lid path
+already does for `xset`. It also recomputes the framebuffer size, which
+doing this through the RandR API would mean reimplementing.
+
+Against it: restoring must put back the exact previous mode, position and
+primary flag, so the configuration has to be recorded before disabling
+rather than restored with `--auto` and hoped over.
+
+**Whether that is acceptable in a power manager is the holder's call.**
+It is a second process spawned from a hardware event, and it is the kind
+of thing upstream may object to.
+
+### Ordering, which is not arbitrary
+
+Disable the output **before** locking, not after. The locker then draws
+once on the final geometry instead of resizing underneath itself.
+`fix/lock-resize-retry` bounds that path now, but bounded is not the same
+as unnecessary, and the cheaper arrangement is to not provoke it.
+
+### Configuration
+
+Opt-in, defaulting **off**. Not because the feature is wrong, but because
+its worst outcome is an invisible screen on somebody else's laptop, and a
+default that can do that will be judged by its worst day rather than its
+average one. `ignoreLidCloseWhenDocked` was defaulted on for the opposite
+reason: its worst outcome is a machine that stays awake.
+
+### What it deliberately does not do
+
+- **Notice the external disappearing while the lid is shut.** That needs
+  RandR event handling, which tdepowersave has none of, and by the argument
+  above it does not need to: lid-open restores.
+- **Handle multiple internal panels.** Dual-screen laptops have two eDPs
+  and only one is behind the lid. Not distinguishable here; rule 5 could be
+  tightened to refuse when more than one internal output is found.
+- **Run under XWayland.** Outputs there are virtual and disabling them is
+  meaningless. Upstream has a live `feat/run-in-xwayland` branch, so this
+  will need an answer eventually, not now.
+
+### Open questions for the holder
+
+- `xrandr` subprocess, or the RandR API with the framebuffer arithmetic
+  that implies?
+- Refuse when more than one internal output is found, or act on the first?
+- Is this one PR with `feat/lid-docked`, or a separate one? They share the
+  detection code but not the risk profile: one declines to act, this one
+  acts.
+
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so installing and
