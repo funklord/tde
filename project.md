@@ -882,6 +882,32 @@ and not risk: that one declines to act and fails safe, this one acts and
 fails dangerous. A reviewer should be able to take the first without
 judging the second.
 
+### A defect found in it, before it was ever installed
+
+`runXrandr()`'s return value was **ignored at all five call sites**. The
+important one: if `xrandr` could not be run, `disableInternalPanel()`
+carried on, found `enabledOutputCount()` still at 2 so the "did anything
+survive" check passed, and set `m_panelDisabled = true` -- **recording the
+panel as switched off when nothing had touched it.** The lid-open path
+would then reconfigure a panel that had never been disabled.
+
+All five are checked now, and each failure says how to recover by hand:
+
+- the `--off` call returns without recording anything;
+- the rollback and the restore log at error level with the exact
+  `xrandr --output NAME --auto` needed, because those two are the paths
+  that end with a display nobody can see;
+- and success is no longer taken on trust: `internalPanelIsOff()` confirms
+  the panel actually went dark, since xrandr exiting zero is not evidence
+  that it did anything.
+
+**A branch mix-up went with it.** The corrections were made while the
+checkout sat on the r14.1.x branch, so for a while `master` carried the
+uncorrected version and the stable branch the fixed one -- the reverse of
+the workflow. Caught by the two diffstats disagreeing, 461 against 504,
+which is exactly what that comparison is kept for. Master was rebuilt from
+the corrected branch and both are 504 again.
+
 ### What is and is not tested
 
 `test/docked-detect/` exercises every read-only helper against the real
@@ -895,10 +921,25 @@ build. Measured on the docked machine and on a nested server with no panel:
 The nested case is the one worth having: **both refusal conditions hold at
 once**, so the fail-closed behaviour is observed rather than asserted.
 
-`disableInternalPanel()` and `restoreInternalPanel()` are **not exercised**.
-They change the live display and want a real lid to close. What is
-established is that the code compiles, that the detection it gates on is
-correct in both directions, and that the guards refuse when they should.
+All three state-changing entry points are exercised on a nested server,
+where they are guaranteed to refuse, and the refusal is checked by
+observing that the enabled-output count did not move:
+
+    disableInternalPanel()   false, outputs 1 -> 1
+    restoreInternalPanel()   false
+    healInternalPanel()      false, outputs still 1
+
+What that does **not** reach is the acting path: record, switch off,
+verify, and the rollback when verification fails. Those want a real lid and
+a real external display. So what is established is that the code compiles,
+that the detection it gates on is right in both directions, and that every
+guard refuses when it should -- not that switching off and back on works.
+
+**Trace logging cannot help here and it is worth knowing why.** The build
+defines `NDEBUG`, which compiles `kdDebug()` away, so `--dbg-trace`
+produces nothing whatever and an empty log says nothing about whether a
+code path ran. Two runs were spent on that before the cause was found.
+Calling the functions directly from a probe is the route that works.
 
 ### The design, as built
 

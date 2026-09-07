@@ -30,5 +30,40 @@ int main(int argc, char **argv)
 	printf("internalPanelIsOff()       = %s\n",
 	       s.internalPanelIsOff() ? "true" : "false");
 
+	/*
+	 * Exercise the refusal path of the state-changing code for real. On a
+	 * server with no output that looks like a panel, or with only one output
+	 * being driven, disableInternalPanel() must decline and change nothing.
+	 * Only run where it is guaranteed to refuse -- pass --try-disable to say
+	 * so explicitly, so this cannot go off by accident on a real desktop.
+	 */
+	if (argc > 1 && TQString(argv[1]) == "--try-disable") {
+		int before = s.enabledOutputCount();
+		bool acted = s.disableInternalPanel();
+		int after = s.enabledOutputCount();
+		printf("disableInternalPanel()     = %s\n", acted ? "true" : "false");
+		printf("  enabled outputs %d -> %d%s\n", before, after,
+		       (before == after) ? "  (unchanged, as required)" : "  CHANGED");
+		if (acted || before != after) {
+			printf("FAIL: it acted where it should have refused\n");
+			return 2;
+		}
+		printf("PASS: refused and changed nothing\n");
+
+		/* restore with nothing recorded, and heal with no panel present */
+		bool restored = s.restoreInternalPanel();
+		bool healed = s.healInternalPanel();
+		printf("restoreInternalPanel()     = %s\n", restored ? "true" : "false");
+		printf("healInternalPanel()        = %s\n", healed ? "true" : "false");
+		int end = s.enabledOutputCount();
+		printf("  enabled outputs now %d%s\n", end,
+		       (end == before) ? "  (still unchanged)" : "  CHANGED");
+		if (restored || healed || end != before) {
+			printf("FAIL: one of them acted where it should have refused\n");
+			return 2;
+		}
+		printf("PASS: all three refused and the display is untouched\n");
+	}
+
 	return docked ? 0 : 1;
 }
