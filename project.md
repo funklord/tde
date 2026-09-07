@@ -822,6 +822,40 @@ nothing.
     fix/tdm-session-class     1 file,  13 insertions,  1 deletion    both
     feat/lid-docked           7 files, 101 insertions, 1 deletion    both
 
+## The locker's resize loop -- FIXED
+
+**Fixed 2026-09-07** on `fix/lock-resize-retry` (master) and
+`fix/lock-resize-retry-r141x` (stable, built clean). Not submitted
+upstream, and **not runtime tested** -- the trigger is a dialog that
+declines to close, which has not been reproduced here.
+
+`doDesktopResizeFinish()` re-armed itself at **zero milliseconds** for as
+long as `closeCurrentWindow()` kept reporting true, with no cap.
+`closeCurrentWindow()` reports true for as long as anything remains in
+`mDialogs`, and a dialog leaves that list only once its `exec()` has
+returned. So a dialog that will not close is a busy loop at whatever rate
+the event loop turns: the resize never finishes and the process sits on a
+core.
+
+Now retries at 50 ms up to 40 attempts -- two seconds -- and on running out
+finishes the resize anyway rather than never, putting `mClosingWindows` and
+`mForceReject` back to rest so the next resize starts clean. Finishing with
+a stale dialog on screen is the better of the two outcomes available at
+that point.
+
+The wait on `mDialogControlLock` in that same function is bounded too.
+Every site that sets the flag clears it before returning, so the ceiling
+should not be reachable; it is bounded because an unbounded spin inside a
+screen locker is a hang with no escape for whoever is sitting in front of
+it. Eight further such spins remain elsewhere in the file, four of them in
+the FIFO command handler that has no consumer.
+
+**Why this was done before the output-switching work**, rather than after:
+a desktop resize while the screen is locked is exactly what a laptop does
+when its lid closes onto an external display. Disabling an output on lid
+close would turn this path from rare into certain, and it is the wrong
+order to make a known-fragile path routine and then fix it.
+
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so installing and
