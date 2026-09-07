@@ -856,9 +856,51 @@ when its lid closes onto an external display. Disabling an output on lid
 close would turn this path from rare into certain, and it is the wrong
 order to make a known-fragile path routine and then fix it.
 
-## Design: switching off the internal panel on lid close
+## Switching off the internal panel on lid close -- IMPLEMENTED
 
-**Not implemented. Drafted 2026-09-07 for the copyright holder to review.**
+**Written 2026-09-07** on `feat/lid-panel-off` (master) and
+`feat/lid-panel-off-r141x` (stable, built clean). Branched from
+`feat/lid-docked`, whose detection it reuses. Not submitted upstream, and
+**the state-changing half is not tested** -- see below.
+
+The three questions this design left open were answered by the copyright
+holder delegating them, and decided as follows.
+
+**RandR to read, `xrandr` to write.** Not either/or: reading mode, position
+and primary flag through the API is exact, while parsing `xrandr --query`
+is not; but writing through the API means reimplementing framebuffer-size
+computation, whose failure mode is a corrupted screen rather than an error.
+`runXrandr()` blocks deliberately, because the verification that follows is
+meaningless against a process still running.
+
+**Refuse when more than one internal panel is found.** A dual-panel laptop
+has two and only one is behind the lid. Nothing visible here says which,
+and refusing costs those users nothing they have today.
+
+**A separate pull request from `feat/lid-docked`.** They share detection
+and not risk: that one declines to act and fails safe, this one acts and
+fails dangerous. A reviewer should be able to take the first without
+judging the second.
+
+### What is and is not tested
+
+`test/docked-detect/` exercises every read-only helper against the real
+build. Measured on the docked machine and on a nested server with no panel:
+
+                                  real (docked)   nested (no panel)
+    internalPanelOutput()         true (eDP-1)    false
+    enabledOutputCount()          2               1
+    internalPanelIsOff()          false           false
+
+The nested case is the one worth having: **both refusal conditions hold at
+once**, so the fail-closed behaviour is observed rather than asserted.
+
+`disableInternalPanel()` and `restoreInternalPanel()` are **not exercised**.
+They change the live display and want a real lid to close. What is
+established is that the code compiles, that the detection it gates on is
+correct in both directions, and that the guards refuse when they should.
+
+### The design, as built
 
 ### The problem it solves
 

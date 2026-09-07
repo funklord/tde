@@ -19,5 +19,16 @@ int main(int argc, char **argv)
 	screen s;
 	bool docked = s.externalDisplayConnected();
 	printf("externalDisplayConnected() = %s\n", docked ? "true" : "false");
+
+	TQString panel;
+	bool found = s.internalPanelOutput(panel);
+	printf("internalPanelOutput()      = %s%s%s\n",
+	       found ? "true (" : "false",
+	       found ? panel.latin1() : "",
+	       found ? ")" : "");
+	printf("enabledOutputCount()       = %d\n", s.enabledOutputCount());
+	printf("internalPanelIsOff()       = %s\n",
+	       s.internalPanelIsOff() ? "true" : "false");
+
 	return docked ? 0 : 1;
 }

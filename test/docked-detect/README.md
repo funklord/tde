@@ -23,6 +23,25 @@ is expected. The `screen` constructor asks kdesktop about the screensaver
 over DCOP, and this probe attaches no DCOP client. It does not affect the
 RandR query under test.
 
+## The panel-switching detection, same probe
+
+`feat/lid-panel-off` gates everything on the same read-only helpers, so the
+probe exercises those too. Measured 2026-09-07:
+
+                                  real (docked)   nested (no panel)
+    externalDisplayConnected()    true            true
+    internalPanelOutput()         true (eDP-1)    false
+    enabledOutputCount()          2               1
+    internalPanelIsOff()          false           false
+
+The nested case is the interesting one: **both refusal conditions hold at
+once** -- nothing is recognised as a built-in panel, and there is only one
+output being driven. Either alone stops the panel being switched off. That
+is the fail-closed behaviour observed rather than asserted.
+
+`disableInternalPanel()` and `restoreInternalPanel()` are **not** exercised.
+They change the live display configuration and want a real lid.
+
 ## What it does not test
 
 Xvfb's `screen` output is not an external display; it stands in for *an
