@@ -1051,6 +1051,54 @@ reason: its worst outcome is a machine that stays awake.
   detection code but not the risk profile: one declines to act, this one
   acts.
 
+## GTK applications opening a folder get Cervisia -- FIXED
+
+**Fixed 2026-09-08** on `fix/directory-mime-default` (master) and
+`fix/directory-mime-default-r141x` (stable). Verified end to end. Not
+submitted upstream.
+
+Anything outside TDE asking to open a folder -- `xdg-open`, `gio`, which is
+what GTK programs use for "show in folder" -- got Cervisia, which then
+reported that the folder is not a CVS folder.
+
+**Nothing chose Cervisia.** With no default recorded for a type, the choice
+falls to whatever sorts first in `mimeinfo.cache` among the desktop files
+claiming it:
+
+    inode/directory=tde-cervisia.desktop;tde-kfmclient_dir.desktop;
+
+`cervisia` sorts before `kfmclient`. That is the entire mechanism. The
+literal `%c` in the window title is the same leak from the other side: the
+`Exec` line reads `cervisia -caption "%c" ...`, a TDE field code that the
+non-TDE launcher passed through instead of expanding.
+
+**The obvious fix is wrong.** Cervisia's `MimeType=inode/directory` looks
+like a mistake for a CVS front-end, but Cervisia registers no service file
+of its own -- checked -- so that line *is* how its KPart is registered, and
+deleting it would take the CVS view out of Konqueror. Only three TDE
+desktop files declare both a KPart service type and a MimeType, and the
+other two, kaddressbook and kpovmodeler, are genuine applications claiming
+types they really handle. Cervisia is the only one masquerading.
+
+So the fix names the file manager rather than touching Cervisia: a
+`tde-mimeapps.list` shipped by konqueror. The `tde-` prefix is what makes
+it apply only when `XDG_CURRENT_DESKTOP` names TDE, leaving a machine
+running another desktop alone. It installs into `applications/` rather than
+`XDG_APPS_INSTALL_DIR`, which is `applications/tde` -- the specification
+looks for the list beside the application directories, not inside them.
+
+Verified by building into a staging prefix and putting it ahead in
+`XDG_DATA_DIRS`, with a config home of its own so no user setting could
+answer instead:
+
+    with the staged tree     tde-kfmclient_dir.desktop
+    without it               tde-cervisia.desktop
+
+**On this machine**, the same result was reached immediately by adding one
+line to `~/.config/mimeapps.list` under `[Default Applications]`; the
+previous file is kept at `~/.config/mimeapps.list.before-tde-fix`. That is
+a local override and is independent of the packaged fix.
+
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so installing and
