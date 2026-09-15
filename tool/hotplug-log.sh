@@ -20,7 +20,15 @@
 #
 set -u
 
-LOG=${1:-$HOME/tde-hotplug.log}
+# The default lands in the project's own scratch directory, which is
+# gitignored, and not in $HOME. It used to be $HOME/tde-hotplug.log, which
+# put a week of an open investigation's evidence outside the tree that
+# describes it -- somewhere no clone carries and nobody reading project.md
+# would look. Derived from this script's location so it does not depend on
+# where it was invoked from.
+here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+LOG=${1:-$here/scratch/tde-hotplug.log}
+mkdir -p -- "$(dirname -- "$LOG")"
 INTERVAL=${INTERVAL:-5}
 MAX_BYTES=${MAX_BYTES:-8388608}
 MAX_SECONDS=${MAX_SECONDS:-86400}
