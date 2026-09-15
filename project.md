@@ -1101,21 +1101,64 @@ a local override and is independent of the packaged fix.
 
 ## Deploying the fixes on this machine
 
-Built as Debian packages rather than copied binaries, so installing and
-reverting are each one apt command and the package manager keeps track.
-Local versions carry a `+lockfix1` / `+lidfix1` suffix, which sorts above
-the repository's `+0` -- so apt will not silently undo them, and a genuine
-14.1.7 from upstream will supersede them when it appears.
+Built as Debian packages rather than copied binaries, so the package
+manager keeps track. Local versions carry a `+lockfix2` / `+lidfix2`
+suffix, which sorts above the repository's `+0` -- so apt will not silently
+undo them, and a genuine 14.1.7 from upstream will supersede them when it
+appears.
 
-Built from `scratch/pkg/`, patched from the `r14.1.x` branches.
+Built from `scratch/pkg2/`, patched from the `r14.1.x` branches. Three
+packages carry the fixes:
 
-    tdepowersave-trinity_...+lidfix1_amd64.deb     the docked-lid feature
-    kdesktop-trinity_...+lockfix1_amd64.deb        the control FIFO fix
-    tdm-trinity_...+lockfix1_amd64.deb             the session class fix
+    tdepowersave-trinity   +lidfix2    the docked lid, and the panel switch
+    kdesktop-trinity       +lockfix2   the control FIFO and the resize loop
+    tdm-trinity            +lockfix2   the session class
 
-Only those three binary packages are installed. The tdebase source builds
-around thirty-five, and replacing konqueror, konsole and kicker to fix two
-bugs would be out of all proportion to the change.
+### Installing those three would have removed nine
+
+**apt answered the three-package form by proposing to remove nine other
+packages**, konqueror and the `tde-trinity` metapackages among them. The
+cause is that a Debian source package's binaries pin each other by exact
+version, and five of tdebase's thirty-two installed outputs do:
+
+    $ dpkg-query -W -f='${Depends}' konqueror-trinity
+    ... kcontrol-trinity (= 4:14.1.6-0debian13.0.0+0+lockfix2) ...
+
+A locally-built kcontrol therefore leaves the archive's konqueror with a
+dependency nothing satisfies, and apt's answer to that is removal. The
+count is re-derivable with
+
+    for p in $(dpkg-query -W -f='${Package} ${Version}\n' \
+                   | awk '/\+(lock|lid)fix2/{print $1}'); do
+            dpkg-query -W -f='${Depends}' "$p" | grep -q '(= 4:14\.1\.6' \
+                    && echo "$p"
+    done
+
+The answer is the closure: install the locally-built version of every
+binary from that source **that is already installed**.
+`tool/make-install-list.sh` computes it from dpkg and the built directory,
+rather than from a list somebody keeps by hand:
+
+    tool/make-install-list.sh scratch/pkg2 +lockfix2 +lidfix2
+    cd scratch/pkg2 && sudo apt install $(cat install-list.txt)
+
+It writes `install-list.txt` and **exits non-zero naming any package that
+is installed but was not built**, which is the case that would otherwise
+reintroduce the removals quietly. It matches `_all.deb` as well as
+`_amd64.deb`: three of tdebase's outputs are `Architecture: all`, and a
+glob for one architecture drops them without saying so.
+
+So konqueror, konsole and kicker are rebuilt and replaced after all. That
+is out of proportion to two bug fixes and it is not a choice -- it is what
+keeping the versions in step costs.
+
+### What is installed
+
+Thirty-two packages, measured rather than remembered:
+
+    dpkg-query -W -f='${Package} ${Version}\n' | grep -E '\+(lock|lid)fix'
+
+31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix2`.
 
 ### The risk, and the way back
 
@@ -1129,13 +1172,36 @@ to learn it in.
 cannot be dismissed. Same recovery: a text console, then
 `pkill kdesktop_lock`.
 
-Reverting any of them is one command per package:
+**The revert this section used to give does not work**, and a recovery
+path that fails is read at the worst possible moment. It was
 
     sudo apt install --reinstall tdm-trinity kdesktop-trinity tdepowersave-trinity
 
-That pulls the stock `4:14.1.6-0debian13.0.0+0` back from the TDE
-repository, because `--reinstall` names the archive version rather than
-the locally-built one.
+on the reasoning that `--reinstall` names the archive version rather than
+the locally-built one. It does not. Simulated against the machine as it
+stands:
+
+    Reinstallation of tdm-trinity is not possible, it cannot be downloaded.
+    Reinstallation of kdesktop-trinity is not possible, it cannot be downloaded.
+    Reinstallation of tdepowersave-trinity is not possible, it cannot be downloaded.
+
+`--reinstall` fetches the version that is *installed*, and `+lockfix2` is
+in no repository. It also named three packages, which is the same mistake
+as installing three.
+
+What does work names the archive version explicitly and downgrades the
+whole set, deriving it from what is installed rather than from a list:
+
+    list=$(dpkg-query -W -f='${Package}\t${Version}\n' \
+               | awk '/\+(lock|lid)fix2/{sub(/\+(lock|lid)fix2$/,"",$2);
+                                         print $1"="$2}')
+    sudo apt install --allow-downgrades $list
+
+Simulated with `apt-get -s`, which needs no privilege: **32 downgraded, 0
+to remove.** The archive version is reachable -- `apt-cache policy
+tdm-trinity` shows `4:14.1.6-0debian13.0.0+0` at priority 500 from
+`mirror.ppa.trinitydesktop.org` -- so the way back does not depend on
+anything in this tree surviving.
 
 ### Verifying afterwards
 
