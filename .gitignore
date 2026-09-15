@@ -15,6 +15,11 @@
 # Session scratch: logs and harness output. Never committed.
 /scratch/
 
+# Written by python running tool/style_gate.py and its suite. Every other
+# private project ignores it; tde had no rule because until 2026-09-15 it
+# was not on the list and carried the gate by hand.
+__pycache__/
+
 # Built by test/docked-detect/Makefile.
 /test/docked-detect/probe
 /test/docked-detect/cc.log
