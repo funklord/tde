@@ -144,7 +144,7 @@ system binary because `kdesktop` resolves the helper with
 `TDEStandardDirs::findExe()` regardless of `PATH`, and one measured FIFOs
 left by a previous run. Both are recorded in its README.
 
-#### The fault as found
+#### The fault as found: a socket directory the user cannot write
 
 
 
@@ -219,7 +219,7 @@ Rebuilt with `-DWITH_PAM=ON`, the object carries `XDG_SESSION_CLASS=user`
 and the binary carries zero occurrences of `=greeter`, against the system
 binary which carries it. Check the artifact, not the exit status.
 
-#### The fault as found
+#### The fault as found: a user session registered as a greeter
 
 
 
@@ -297,7 +297,7 @@ that is not a panel*, so the RandR query and the name matching are
 exercised and a real hotplug, a real DisplayPort connector and the lid
 event itself are not.
 
-#### The fault as found
+#### The fault as found: a standing block on handle-lid-switch
 
 
 
