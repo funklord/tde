@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copied from ~/.claude/tool/style_gate.py -- the source. Keep in sync;
+# fix drift the moment you notice it.
 """The indentation and whitespace gate for private projects.
 
 One tool, merged from three that had grown apart:
@@ -322,11 +324,38 @@ def in_git_repo(root: Path) -> bool:
 	built for and the only one it is right for.
 	"""
 	try:
+		# --show-toplevel, not --is-inside-work-tree. The question is
+		# whether THIS directory is a project git can enumerate, and
+		# "am I somewhere inside a work tree" answers a different one:
+		# a copy of a project placed inside another repository -- an
+		# extracted archive under build/, a release staging tree --
+		# gets `true`, and then `ls-files --exclude-standard` returns
+		# NOTHING, because the parent's .gitignore covers the
+		# directory it was put in.
+		#
+		# Found and fixed by ossacli 2026-09-05, who checked that their
+		# project builds from what a fresh clone holds and found `make
+		# style` the one target that refused. Reproduced here before it
+		# was taken: `git archive HEAD | tar -x` into a directory this
+		# repository ignores, and git lists 0 files while
+		# --is-inside-work-tree says true. The refusal is the guard
+		# below working correctly, and the reason it had to fire is
+		# this line. The docstring above already says the fallback is
+		# for "a tree with no `.git` to skip", which is exactly that
+		# tree; the code tested something else.
 		out = subprocess.run(["git", "-C", str(root), "rev-parse",
-		                      "--is-inside-work-tree"],
+		                      "--show-toplevel"],
 		                     capture_output=True, text=True, check=False)
 		if out.returncode == 0:
-			return out.stdout.strip() == "true"
+			top = out.stdout.strip()
+			try:
+				same = top and Path(top).resolve() == root.resolve()
+			except OSError:
+				same = False
+			# A directory that IS the top of a work tree, or that
+			# carries its own .git, is git's to enumerate. Anything
+			# else walks.
+			return bool(same) or (root / ".git").exists()
 		detail = out.stderr.strip().splitlines() or [
 			f"git rev-parse exited {out.returncode} and said nothing."]
 	except OSError as exc:
@@ -358,9 +387,24 @@ def discover(root: Path, cfg: Config) -> tuple[list[Path], int]:
 	The fallback exists so the tool works in a tree that is not a repo yet.
 	"""
 	if in_git_repo(root):
+		# -z, and not for tidiness. Without it git QUOTES any path it
+		# considers unusual -- core.quotePath defaults to true -- so a
+		# file named caf\303\251.py arrives as the literal 12-character
+		# string `"caf\303\251.py"`, `root / name` names nothing on
+		# disk, and the is_file() filter below drops it without a word.
+		# The file is then exempt from every rule this gate enforces
+		# while the run reports a pass, and the collapse floor cannot
+		# see it either because the quoted name is still counted in the
+		# raw population. Measured: a tree whose only violation was in
+		# such a file printed "2 file(s) pass" and exited 0, where the
+		# same violation in an ASCII name exited 1.
+		#
+		# NUL separation rather than core.quotePath=false, which fixes
+		# the same case: a filename may contain a newline, and only -z
+		# survives that.
 		out = subprocess.run(
-			["git", "-C", str(root), "ls-files", "--cached", "--others",
-			 "--exclude-standard"],
+			["git", "-C", str(root), "ls-files", "-z", "--cached",
+			 "--others", "--exclude-standard"],
 			capture_output=True, text=True, check=False)
 		# A git that exits non-zero is a broken instrument, not an empty
 		# tree, and downstream the two are indistinguishable: both arrive
@@ -379,7 +423,7 @@ def discover(root: Path, cfg: Config) -> tuple[list[Path], int]:
 			reject(f"cannot list the files in {root}.", *detail,
 			       "discovery is the whole file set, so continuing "
 			       "would check nothing and pass.")
-		names = [line for line in out.stdout.splitlines() if line]
+		names = [name for name in out.stdout.split("\0") if name]
 		paths = [root / n for n in names]
 	else:
 		paths = [p for p in root.rglob("*") if p.is_file()]
@@ -1705,6 +1749,75 @@ def fix_file(path: Path, cfg: Config, write: bool) -> tuple[bool, str | None]:
 _DOC_TOKEN = re.compile(r"`([A-Za-z0-9._/-]+)`")
 
 
+def outside_fences(text: str):
+	"""(number, line) for every line not inside a CLOSED fenced block.
+
+	Both document checks read prose, and neither could tell prose from a
+	fenced example until this existed: a shell comment starts at column 0
+	exactly as a heading does, and an illustrated markdown table has rows
+	starting with `|` exactly as a real one does. A `# build the thing`
+	appearing twice in one block was reported as a repeated heading, and a
+	fenced table naming `tool/nope.py` as a missing file -- the second only
+	when the illustrated path's parent directory exists, which is why it
+	hid.
+
+	**Only a CLOSED fence hides anything, and the first version of this
+	got that wrong in the direction that matters.** It toggled on every
+	marker, so a lone one swallowed the rest of the file. fuzznet's
+	project.md carries a single `~~~~` at line 6474 as a horizontal rule,
+	with no partner anywhere: the heading count fell from 1086 to 99, and
+	993 headings and every path across the remaining 22,765 lines left the
+	gate without a word. That is the fault this whole function exists to
+	remove, reintroduced by the function -- and it was caught by comparing
+	the two gates across sixteen trees before spreading either, not by
+	review.
+
+	So pairing is required, and an unmatched marker is ordinary text. The
+	worst case is then a genuinely unterminated fence whose contents get
+	read as prose, which is the behaviour before any of this and cannot
+	hide anything. A closing run must be the same character and no shorter
+	than the opening one, and must hold nothing else -- an info string is
+	allowed only on the opener, which is what lets ```sh open and ``` close.
+	"""
+	lines = text.splitlines()
+	inside: set[int] = set()
+	opened_at = 0
+	opened_ch = ""
+	opened_len = 0
+	for number, line in enumerate(lines, start=1):
+		stripped = line.lstrip()
+		char = stripped[:1] if stripped[:1] in ("`", "~") else ""
+		run = len(stripped) - len(stripped.lstrip(char)) if char else 0
+		if not opened_at:
+			if char and run >= 3:
+				opened_at, opened_ch, opened_len = number, char, run
+		elif (char == opened_ch and run >= opened_len
+		      and not stripped.strip(opened_ch)):
+			inside.update(range(opened_at, number + 1))
+			opened_at = 0
+	for number, line in enumerate(lines, start=1):
+		if number not in inside:
+			yield number, line
+
+
+def heading_number(line: str) -> str:
+	"""The section number a heading opens with, or "" if it opens with none.
+
+	`## 130. Title` gives "130", `### 26.223 Title` gives "26.223", and
+	`## 15d. Title` gives "15d" -- a letter suffix is how these documents
+	insert a section between two that are already numbered, so it is part
+	of the identifier rather than noise. A heading with no leading number
+	gives "", which is what keeps this silent in the documents that do not
+	number their sections at all.
+	"""
+	body = line.lstrip("#").strip()
+	token = body.split(" ", 1)[0].rstrip(".")
+	if not token or not token[0].isdigit():
+		return ""
+	return token if all(c.isdigit() or c == "." or c.islower()
+	                    for c in token) else ""
+
+
 def doc_paths(text: str) -> list[tuple[int, str]]:
 	"""Backticked paths in table rows: the document's declared inventory.
 
@@ -1738,7 +1851,7 @@ def doc_paths(text: str) -> list[tuple[int, str]]:
 	literally greps for a table, finds 149, and concludes this function
 	is broken. One did, and wrote it into a commit message."""
 	found = []
-	for number, line in enumerate(text.splitlines(), start=1):
+	for number, line in outside_fences(text):
 		if not line.lstrip().startswith("|"):
 			continue
 		for token in _DOC_TOKEN.findall(line):
@@ -1782,13 +1895,41 @@ def check_docs(root: Path, cfg: Config,
 	text = doc.read_text(encoding="utf-8", errors="replace")
 
 	seen: dict[str, int] = {}
-	for number, line in enumerate(text.splitlines(), start=1):
+	# A NUMBER is an identifier, and two sections may carry the same one
+	# while their headings differ -- so the repeat check above cannot see
+	# it. Two sessions appending to one document pick the next number by
+	# reading the file, and between the read and the write the other has
+	# already taken it. Measured 2026-09-06 across seven numbered
+	# documents: fuzznet carried two `## 130.` written the same day, and
+	# situ two `### 26.223`.
+	#
+	# Keyed by level AND parent, because a bare `### 1.` restarting under
+	# each `##` is how several of these documents are written and is not a
+	# collision. Only a number repeated among siblings is one. That is the
+	# whole of the rule: it needs no list of which trees number their
+	# sections, and stays silent in the three that do not.
+	numbers: dict[tuple[int, str, str], int] = {}
+	parents: dict[int, str] = {}
+	for number, line in outside_fences(text):
 		if line.startswith("#"):
 			if line in seen:
 				problems.append(Problem(rel, number, 1,
 					f"heading repeats line {seen[line]}: {line.strip()}"))
 			else:
 				seen[line] = number
+			level = len(line) - len(line.lstrip("#"))
+			parents[level] = line.strip()
+			for deeper in [k for k in parents if k > level]:
+				del parents[deeper]
+			label = heading_number(line)
+			if label:
+				key = (level, parents.get(level - 1, ""), label)
+				if key in numbers:
+					problems.append(Problem(rel, number, 1,
+						f"section {label} repeats line {numbers[key]}: "
+						f"{line.strip()}"))
+				else:
+					numbers[key] = number
 
 	counts["headings"] = len(seen)
 	if not cfg["doc_check_paths"]:
@@ -1807,6 +1948,62 @@ def check_docs(root: Path, cfg: Config,
 		if parent != root and not parent.is_dir():
 			continue
 		problems.append(Problem(rel, number, 1, f"names a missing file: {token}"))
+	return problems
+
+
+def summaryless_docs(root: Path, files: list[Path],
+                     counts: dict[str, int]) -> list[Problem]:
+	"""Find Rust doc comments that open with a bare `///` and so have no summary.
+
+	Rust's convention, and rustdoc's rendering, take the first line of a doc
+	comment as the summary: it is what the module index shows beside the item
+	and what a reader sees first. A comment that opens with an empty `///`
+	has none, so the rendered page for the item begins with a heading --
+	`# Errors`, usually, because that is the section a public function is
+	obliged to carry.
+
+	`missing_docs` cannot see this. The comment is present; it just says
+	nothing before its first section, which is how one sat on a public
+	function in netcfgd until its 0223 went looking. The rule is netcfgd's,
+	from its 2775190, taken into the source 2026-09-15 because a copy
+	carrying a rule the source lacks is a copy `sync` erases.
+
+	**This is worth a gate where the run-together case is not.** That one --
+	two doc comments with no item between them -- has no exact textual
+	signature, and the lint that would catch it,
+	`clippy::missing_docs_in_private_items`, reported 447 items in the tree
+	that measured it. This one is a single unambiguous pattern: a `///` line
+	whose predecessor is not a doc comment, and which carries nothing after
+	the slashes. `////` and longer are separators, not doc comments, and are
+	left alone.
+
+	The population is the gate's own, not a walk: `files` is what discover()
+	kept, so the tree's excludes and git's ignore rules apply, and a vendored
+	submodule is a gitlink rather than a directory of `.rs` files. The copy
+	this came from walked `rglob` and named its build and vendor directories
+	by hand.
+	"""
+	problems: list[Problem] = []
+	scanned = 0
+	for path in files:
+		if path.suffix != ".rs":
+			continue
+		try:
+			lines = path.read_text(encoding="utf-8").splitlines()
+		except (OSError, UnicodeDecodeError):
+			continue
+		scanned += 1
+		rel = path.relative_to(root)
+		for index, line in enumerate(lines):
+			if line.strip() != "///":
+				continue
+			# A doc comment *opens* here only if the line above is not one.
+			previous = lines[index - 1].strip() if index else ""
+			if previous.startswith("///"):
+				continue
+			problems.append(Problem(rel, index + 1, 1,
+			                        "doc comment has no summary line"))
+	counts["rust"] = scanned
 	return problems
 
 
@@ -1845,6 +2042,7 @@ def main(argv: list[str]) -> int:
 	if mode == "docs":
 		counts: dict[str, int] = {}
 		problems = check_docs(root, cfg, counts)
+		problems += summaryless_docs(root, files, counts)
 		for problem in problems:
 			print(problem, file=sys.stderr)
 		if problems:
@@ -1863,7 +2061,8 @@ def main(argv: list[str]) -> int:
 		           + (f", {counts['paths']} path(s)" if "paths" in counts
 		              else ", paths not checked") + ")")
 		print(f"style-gate: {cfg['doc_file']}{scanned} says nothing twice and names no "
-		      f"missing file")
+		      f"missing file; {counts['rust']} rust file(s) have a summary "
+		      f"line on every doc comment")
 		return 0
 
 	if mode == "list":
