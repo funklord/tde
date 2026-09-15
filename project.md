@@ -321,6 +321,47 @@ event it queues `checkBrightness()` behind a 50 ms `singleShot`
 (101), 2 `ChangeWindowAttributes` (78), 3 `GetWindowAttributes` (6), in
 bursts coinciding with the lock warnings. Cause not established.
 
+### 7. `tdelfeditor -e` strips GNU_RELRO from every TDE binary
+
+Found while packaging a TQt3 front end for netcfgd, where lintian reported
+`hardening-no-relro` on a binary whose link line demonstrably carried
+`-Wl,-z,relro`.
+
+TDE's cmake macros run two commands on every binary and library after the
+link, at four call sites in `TDEMacros.cmake` (the `COMMENT` lines are
+1443, 1453, 1694 and 1705):
+
+    tdelfeditor -m <target> ${ELF_EMBEDDING_METADATA}   # write SCM metadata
+    tdelfeditor -e <target>                             # remove resource
+
+Isolated on a copy of one linked binary, one command at a time:
+
+    before      GNU_RELRO present
+    after -m    GNU_RELRO present
+    after -e    GNU_RELRO gone
+
+So `-e` rewrites the ELF without carrying the segment across. Reproduced
+from the other end as well: running the build's own link command by hand,
+out of `CMakeFiles/<target>.dir/link.txt`, produces a binary with the
+segment, and the build's own output of that same command does not.
+
+It is not specific to anything built here. Stock binaries have none
+either, while a non-TDE binary built on the same machine by the same
+toolchain keeps its segment -- which is the control that makes this
+TDE's tool rather than the compiler or the flags:
+
+    /opt/trinity/bin/tdepowersave   none
+    /opt/trinity/bin/tdesu          none
+    /usr/bin/netcfgd-gui            GNU_RELRO
+
+Every Trinity binary on a Debian system is therefore missing a hardening
+measure the distribution applies by default, and **no packaging can put it
+back**: the flag is honoured at link time and destroyed afterwards. Passing
+it is still right, so that a fixed `tdelfeditor` takes effect for free.
+
+Not reported upstream. It belongs to tdelibs and its cmake modules rather
+than to tdebase, so it is a different tracker from findings 1 to 6.
+
 ## Open: the USB-C display hang -- NOT fixed
 
 Reported by the copyright holder: an occasional hang when a USB-C display
