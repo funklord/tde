@@ -16,6 +16,14 @@ It builds nothing of its own.
     tdebase/            upstream clone, not tracked here
     tdepowersave/       upstream clone, not tracked here
 
+A TQt3 control-centre module and tray for netcfgd were written during this
+work and live in **netcfgd's** tree, at `adapter/netcfgd-tde/`, packaged as
+`netcfgd-trinity`. They are recorded there rather than here because they
+are netcfgd's software; the pointer is here because a reader of this file
+would otherwise not know a TDE front end exists. `doc/tde-integration.md`
+in that tree carries why it is a second front end rather than the Qt one
+repackaged.
+
 The two clones are fetched with `make upstream` and are ignored by git.
 They are separate upstream repositories, not one -- verified by their root
 commits (`be4fc77c` for tdepowersave, `4aed2c82` for tdebase) and their
@@ -361,6 +369,46 @@ it is still right, so that a fixed `tdelfeditor` takes effect for free.
 
 Not reported upstream. It belongs to tdelibs and its cmake modules rather
 than to tdebase, so it is a different tracker from findings 1 to 6.
+
+## Open: tdelauncher lost its socket once, cause unknown
+
+2026-09-15, eight days into a session. Every attempt to LAUNCH something
+-- a menu entry, a file association, `tdecmshell` -- reported "TDELauncher
+cannot be reached by DCOP", while programs that fork directly were
+unaffected, which made it look intermittent.
+
+Measured rather than inferred:
+
+    connect /tmp/tdesocket-nabbe/tdeinit__0   ECONNREFUSED
+    connect /tmp/tdesocket-nabbe/tdeinit-:0   ECONNREFUSED
+    dcop | grep -c tdelauncher                0
+
+So the message was literally true. The odd half is that `tdelauncher` pid
+1808 was still in the process table, running since the session began on
+2026-09-06: the process lived and its door was gone. Both socket files had
+been bound at **17:44:54.893229420**, the same nanosecond, by a tdeinit
+that had since exited -- leaving dead sockets at the path every launch
+consults.
+
+**What bound them was never established.** No user process started
+anywhere near 17:44 (`ps -eo pid,lstart` shows only kernel workers), and
+`.xsession-errors` holds nothing from that minute. Two headless
+`tdecmshell` runs earlier the same afternoon are a candidate that cannot
+be fully excluded -- the second used the real `TDEHOME` where the first
+used a throwaway one -- but they ran on a separate Xvfb display two hours
+before, and the dead sockets are `:0`'s.
+
+Repaired in place with `tdeinit --no-kded`, `--no-kded` because kded was
+still registered and healthy and a second one would have been a new fault.
+Both sockets answered afterwards and the launcher re-registered. It left
+the two orphaned tdelaunchers from 09-06 and 09-07 in the table, inert.
+
+**If it recurs, capture this before restarting anything** -- the socket's
+mtime pins the event to whatever was happening at that moment, which is
+the one thing missing here, the trail having been two hours cold:
+
+    stat -c%y /tmp/tdesocket-nabbe/tdeinit__0
+    dcop | grep -c tdelauncher
 
 ## Open: the USB-C display hang -- NOT fixed
 
@@ -1200,6 +1248,20 @@ Thirty-two packages, measured rather than remembered:
     dpkg-query -W -f='${Package} ${Version}\n' | grep -E '\+(lock|lid)fix'
 
 31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix2`.
+
+**None of it has been through a reboot, and that is the open test.**
+Measured 2026-09-15: installed 2026-09-07 15:43, machine last booted
+2026-09-06 21:52 and up since. What was confirmed in production on the 6th
+is fix set **1**, installed at 21:46 and booted into six minutes later. So
+a reboot exercises, for the first time at boot, kdesktop_lock's resize
+bound, a tdm binary that has never started a session, and tdepowersave
+with the panel-off machinery compiled in.
+
+`switchOffPanelOnLidClose` is unset in `~/.trinity/share/config/
+tdepowersaverc`, so the compiled default of false applies and the acting
+path stays untested -- `ignoreLidCloseWhenDocked` is likewise unset and
+defaults true, so the docked behaviour is live. Turning the panel switch
+on deserves its own reboot rather than riding along with this one.
 
 ### The risk, and the way back
 
