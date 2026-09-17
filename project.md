@@ -278,11 +278,18 @@ dialog.
 
 `screen::externalDisplayConnected()` asks RandR whether any connector other
 than the built-in panel is connected, and `handleLidEvent()` skips the
-lid-close **action** when it says yes. Only the action is suppressed;
-locking keeps its own setting, which is how logind splits the two. The new
-`ignoreLidCloseWhenDocked` defaults to true, matching logind's own
-`HandleLidSwitchDocked=ignore` -- the default tdepowersave's block
-inhibitor currently prevents the system from ever reaching.
+lid-close response when it says yes. `ignoreLidCloseWhenDocked` defaults
+to true, matching logind's own `HandleLidSwitchDocked=ignore` -- the
+default tdepowersave's block inhibitor currently prevents the system from
+ever reaching.
+
+**As first written it guarded only the action branch**, on the reasoning
+that a lock was a separate concern the way logind separates
+`HandleLidSwitch` from session locking. That was wrong for a single
+setting whose whole promise is that a docked session stays usable: a
+machine with no configured lid-close action -- the common case, where
+closing the lid just locks -- still locked on every lid close while
+docked. Fixed in `+lidfix3`, recorded below.
 
 It calls `XRRGetScreenResourcesCurrent` rather than
 `XRRGetScreenResources` deliberately: the latter forces a DDC probe of
@@ -304,6 +311,29 @@ does not cover is stated in its README: Xvfb's output stands in for *a name
 that is not a panel*, so the RandR query and the name matching are
 exercised and a real hotplug, a real DisplayPort connector and the lid
 event itself are not.
+
+#### The guard skipped the lock and DPMS-off paths -- FIXED (+lidfix3)
+
+**Fixed 2026-09-17**, and confirmed by the copyright holder closing the
+lid docked: it no longer locks. On `feat/lid-docked` (master) and
+`feat/lid-docked-r141x`, with `feat/lid-panel-off` rebased onto each so
+both feature branches carry it; built as `tdepowersave-trinity +lidfix3`
+and installed.
+
+`handleLidEvent()` checked `ignoreLidCloseWhenDocked && externalDisplayConnected()`
+only inside the branch that handles a configured action, so the lock and
+`forceDpmsOffOnLidClose` in the other branch ran regardless. The wiring
+was the proof: a lock is exactly the exit the guard did not reach. The fix
+hoists the guard above both branches, so docked-and-ignore means no lock,
+no DPMS-off and no action.
+
+Runtime only for the confirmation: the `kdDebug` trace that would show the
+branch taken is stripped by `-DNDEBUG`, established by a positive control
+(the old build lacks its own old trace string too), so `strings` cannot
+see the change either way. What was verified mechanically is that the
+edited `tdepowersave.cpp` was the file compiled into the shipped object;
+that the docked session no longer locks is the copyright holder's
+observation, which is the only instrument that reaches it.
 
 #### The fault as found: a standing block on handle-lid-switch
 
@@ -369,6 +399,53 @@ it is still right, so that a fixed `tdelfeditor` takes effect for free.
 
 Not reported upstream. It belongs to tdelibs and its cmake modules rather
 than to tdebase, so it is a different tracker from findings 1 to 6.
+
+### 8. No display arrangement persistence or hotplug policy
+
+Not a regression and not one of our patches -- a standing TDE gap, surfaced
+2026-09-17 by the first reboot in eleven days. Recorded because it is what
+the copyright holder actually wants fixed and because two hours went into
+learning its shape.
+
+Three symptoms, one absence:
+
+- **The arrangement resets on every cold boot.** There is no `tderandrrc`
+  and nothing in `.xsession` or Autostart runs `xrandr`, so at login the
+  `modesetting` driver's default stands: both outputs enabled, side by
+  side, the built-in panel primary at the origin. Whatever arrangement the
+  previous session had was runtime-only state a reboot discards.
+- **Kicker and the lock/login prompt then sit on the internal panel**
+  (`XineramaScreen=0`, the output at the origin), so with the lid shut they
+  are on a dark screen. `+lidfix3` removes the docked case of this by not
+  locking at all; the panel-primary placement remains for anything else.
+- **Nothing re-applies an arrangement on a RandR change.** A mirror set by
+  hand did not survive a lid-close: with both outputs at one origin the
+  driver collapsed them to a single CRTC and kept the *internal*, dropping
+  the external, so the desktop rendered scaled onto the shut panel and its
+  menus were unreachable. Observed once, with a `--scale-from` mirror;
+  not proven for a plain same-resolution mirror, but any mirror shares the
+  one-origin property the driver mishandled.
+
+The unifying fact is that TDE R14.1 has no component that owns display
+policy across events -- the "display switcher daemon" that newer desktops
+run. `tderandrtray` reacts to change events but applies no chosen policy;
+hand-`xrandr` cannot stand in, because the event that breaks it is the same
+event that would need to re-apply it.
+
+**Whose decision, and the options, because this is a feature rather than a
+fix.** A daemon that on each RandR change picks a policy -- docked: external
+primary, internal mirrored or off; undocked: internal only -- is the thing
+wanted, and the copyright holder said earlier this is plausibly
+tdepowersave's job since nothing else holds it. That is a real piece of
+design, not a setting, and it is not started here without being asked for.
+`autorandr` exists and does exactly this generically, at the cost of a
+per-machine dependency and of not being TDE's own. Left open for a
+deliberate decision.
+
+**What was NOT done, deliberately:** no `autorandr` install, no
+`/etc/trinity/tdm/Xsetup` edit, no persisted `xrandr` -- those fix one
+machine, and the instruction was to fix TDE. The live `xrandr` used while
+diagnosing is runtime-only and leaves nothing behind.
 
 ## Open: tdelauncher lost its socket once, cause unknown
 
@@ -1191,15 +1268,16 @@ a local override and is independent of the packaged fix.
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so the package
-manager keeps track. Local versions carry a `+lockfix2` / `+lidfix2`
-suffix, which sorts above the repository's `+0` -- so apt will not silently
+manager keeps track. Local versions carry a `+lockfix2` (tdebase) / `+lidfix3`
+(tdepowersave) suffix, which sorts above the repository's `+0` -- so apt will not silently
 undo them, and a genuine 14.1.7 from upstream will supersede them when it
 appears.
 
 Built from `scratch/pkg2/`, patched from the `r14.1.x` branches. Three
 packages carry the fixes:
 
-    tdepowersave-trinity   +lidfix2    the docked lid, and the panel switch
+    tdepowersave-trinity   +lidfix3    the docked lid, its lock-path fix,
+                                   and the opt-in panel switch
     kdesktop-trinity       +lockfix2   the control FIFO and the resize loop
     tdm-trinity            +lockfix2   the session class
 
@@ -1247,10 +1325,11 @@ Thirty-two packages, measured rather than remembered:
 
     dpkg-query -W -f='${Package} ${Version}\n' | grep -E '\+(lock|lid)fix'
 
-31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix2`.
+31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix3`.
 
-**None of it has been through a reboot, and that is the open test.**
-Measured 2026-09-15: installed 2026-09-07 15:43, machine last booted
+**The reboot is done -- 2026-09-17; what it showed is at the foot of
+this section.** The baseline below was taken first so the run afterwards
+would mean something. Measured 2026-09-15: installed 2026-09-07 15:43, machine last booted
 2026-09-06 21:52 and up since. What was confirmed in production on the 6th
 is fix set **1**, installed at 21:46 and booted into six minutes later. So
 a reboot exercises, for the first time at boot, kdesktop_lock's resize
@@ -1294,6 +1373,25 @@ locked. That is the path `kdesktop_lock`'s resize retry bounds, and it is
 also the USB-C hang's own reproduction, so the two tests are one act. DP-1
 was connected when this baseline was taken, so the topology can be changed
 in either direction.
+
+#### After the reboot (2026-09-17)
+
+Booted 17:06 into fix set 2 as it then stood (`+lockfix2`, `+lidfix2`);
+tdepowersave went to `+lidfix3` later the same day, after the defect below
+surfaced. A text console was confirmed first; graphical login came up and
+nothing failed to start.
+
+`verify-fixes.sh` was not the instrument that mattered, for the reason
+given above -- it reports on set 1's work, which held. What the reboot
+actually surfaced was two things it could not see: the display arrangement
+reset to the driver default (finding 8), and docked lid-close still locked
+(finding 4's lock-path defect), which `+lidfix3` then fixed and the
+copyright holder confirmed.
+
+**The kdesktop resize bound (`+lockfix2`) is still unconfirmed at boot.**
+It needs a lock followed by a display-topology change, and its give-up
+warnings have not appeared in the session log this boot. It is the one
+part of set 2 not yet exercised.
 
 ### The risk, and the way back
 
