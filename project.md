@@ -327,6 +327,23 @@ was the proof: a lock is exactly the exit the guard did not reach. The fix
 hoists the guard above both branches, so docked-and-ignore means no lock,
 no DPMS-off and no action.
 
+**The single flag then became two, on the copyright holder's design
+call.** `ignoreLidCloseWhenDocked` coupled the lock and the action, which
+tdepowersave keeps separate everywhere else, and had no UI. It is replaced
+by `lockOnLidCloseWhenDocked` and `performLidActionWhenDocked`, both
+defaulting off (so the behaviour above is the default), each a checkbox in
+the configure dialog -- the lock one in Lock Screen, the action one in
+Button Events beside "Lid close Button:". The model is two plain toggles
+rather than a mirror of logind's docked/external-power/normal triplet: the
+holder noted logind is a systemd interface tdepowersave must outlive, and
+this is the only machine here with systemd. `+lidfix4`.
+
+**And the checkboxes were invisible until a second bug was found -- see
+finding 9.** The dialog hid every lid option on this hardware because TDE
+reports the form factor as Desktop. `+lidfix5` gates them on the lid
+switch instead; `+lidfix6` moved the action checkbox to Button Events.
+
+
 Runtime only for the confirmation: the `kdDebug` trace that would show the
 branch taken is stripped by `-DNDEBUG`, established by a positive control
 (the old build lacks its own old trace string too), so `strings` cannot
@@ -446,6 +463,48 @@ deliberate decision.
 `/etc/trinity/tdm/Xsetup` edit, no persisted `xrandr` -- those fix one
 machine, and the instruction was to fix TDE. The live `xrandr` used while
 diagnosing is runtime-only and leaves nothing behind.
+
+### 9. TDE reports this laptop as a desktop, hiding the lid settings
+
+Found while making the docked policy configurable: the two new checkboxes,
+and the pre-existing "Lock screen on lid close", were absent from the
+configure dialog on this machine. Not a build problem -- they were
+compiled in and rendered fine in a standalone preview of the dialog. The
+`ConfigureDialog` subclass hides all three whenever `hwinfo->isLaptop()`
+is false, and it is false here.
+
+Measured, not inferred. `isLaptop()` is TDE's hardware layer reporting
+`TDERootSystemDevice::formFactor()`, and a probe linked against `tdehw`
+returns **`formFactor=1` (Desktop)** on a Dell Latitude 5430 whose DMI
+chassis type is **10 (Notebook)** -- so the layer does not map that
+chassis type to Laptop. The same probe finds **one `ACPILidSwitch`
+device**, so the lid is plainly there; TDE just does not call the machine
+a laptop.
+
+That the checkbox was hidden all along is how the machine came to lock on
+lid close with no visible setting for it: the daemon acts on lid events
+regardless of the dialog, so the behaviour was reachable while its control
+was not.
+
+**Fixed in tdepowersave by asking the right question.** The dialog now
+gates the lid options on whether a lid switch exists (`hasLid()`, recorded
+from the ACPI lid device tdepowersave already connects to) rather than on
+the form factor. `+lidfix5`. This restores the stock "Lock screen on lid
+close" checkbox too, not only the new ones.
+
+**The root cause is one layer down and is not fixed here.** The chassis-10
+gap belongs to tdelibs' `TDERootSystemDevice::formFactor()`, and anything
+else keying UI on `isLaptop()` inherits it. That is a separate tdelibs
+report, not made yet, and it is a different tracker from tdebase and from
+tdepowersave.
+
+The process lesson is finding 4's, sharpened: the first "it is definitely
+there" rested on a standalone render of the uic **base** dialog, which
+does not run the subclass's `hide()`, so it could not see the very bug the
+subclass introduced. The reboot that changed nothing was the tell that the
+verified artifact was the wrong one. What settled it was measuring the
+predicate -- `formFactor` and the lid-switch count -- on the real
+hardware.
 
 ## Open: tdelauncher lost its socket once, cause unknown
 
@@ -1276,8 +1335,9 @@ appears.
 Built from `scratch/pkg2/`, patched from the `r14.1.x` branches. Three
 packages carry the fixes:
 
-    tdepowersave-trinity   +lidfix3    the docked lid, its lock-path fix,
-                                   and the opt-in panel switch
+    tdepowersave-trinity   +lidfix6    the docked lid: configurable lock and
+                                   action when docked, lid options shown by
+                                   lid presence not form factor, panel switch
     kdesktop-trinity       +lockfix2   the control FIFO and the resize loop
     tdm-trinity            +lockfix2   the session class
 
@@ -1325,7 +1385,7 @@ Thirty-two packages, measured rather than remembered:
 
     dpkg-query -W -f='${Package} ${Version}\n' | grep -E '\+(lock|lid)fix'
 
-31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix3`.
+31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix6`.
 
 **The reboot is done -- 2026-09-17; what it showed is at the foot of
 this section.** The baseline below was taken first so the run afterwards
