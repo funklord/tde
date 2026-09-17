@@ -1263,6 +1263,38 @@ path stays untested -- `ignoreLidCloseWhenDocked` is likewise unset and
 defaults true, so the docked behaviour is live. Turning the panel switch
 on deserves its own reboot rather than riding along with this one.
 
+#### The baseline, taken 2026-09-16 before the reboot
+
+So that the run afterwards means something. Method: `tool/verify-fixes.sh`,
+`loginctl show-session c1`, and `grep -ac` on the session log -- `-a`
+because ugrep skips a file it decides is binary and this one is 14 MB of
+eight days.
+
+    verify-fixes.sh                pass=4 fail=0 unknown=0
+    session c1                     Class=user CanLock=yes Type=x11
+    control FIFOs                  2, both dated 09-06 21:58
+    'unable to create control socket'  0 in this session's log
+    BadWindow in .xsession-errors  1037, over 8 days and 14358672 bytes
+    outputs connected              eDP-1 and DP-1
+
+The running binaries are **fix set 1** -- installed 09-06 21:46, six
+minutes before that boot -- while the disk holds set 2. That is what the
+reboot changes.
+
+**And the verifier cannot tell the two sets apart, which is the thing to
+know before reading its output.** It checks the session class, the FIFOs
+and a string in the tdepowersave binary, and all three are set 1's work;
+it answered `pass=4` before the reboot and will answer `pass=4` after,
+whatever set 2 does. A green run afterwards therefore says set 1 still
+holds and says nothing about the resize bound.
+
+**What does exercise set 2 is locking the screen and then changing the
+display topology** -- plug or unplug the USB-C display with the screen
+locked. That is the path `kdesktop_lock`'s resize retry bounds, and it is
+also the USB-C hang's own reproduction, so the two tests are one act. DP-1
+was connected when this baseline was taken, so the topology can be changed
+in either direction.
+
 ### The risk, and the way back
 
 **tdm is the display manager.** If a broken one is installed there is no
