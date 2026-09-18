@@ -510,6 +510,31 @@ verified artifact was the wrong one. What settled it was measuring the
 predicate -- `formFactor` and the lid-switch count -- on the real
 hardware.
 
+### 10. tdepowersave carries a netcfgd profile per power scheme
+
+A feature rather than a fix, and the first cross-tool tie in this tree:
+a power scheme can name a netcfgd profile to switch to when it activates,
+so a battery scheme can trim the network. netcfgd owns what the profile
+does; tdepowersave only names which profile goes with which scheme.
+
+**Detection, not linking, which is the point.** Nothing here links
+netcfgd. `TDEGlobal::dirs()->findExe("ncfg")` decides whether the feature
+exists at all; `ncfg profile list` fills the combo and `ncfg profile set`
+switches -- the same shell-out shape the panel-off code uses for xrandr.
+The Networking page in the per-scheme toolbox is shown only when ncfg is
+found and removed otherwise. The selection is stored by profile name, not
+combo index, so it survives the list changing and an unknown name falls
+back to not switching. Switching is silent (schemes flip on every
+AC/battery change; a popup each time would be noise) and a failure is a
+text line on the page, cleared on the next success. `ncfg profile set`
+runs without a shell so a configured name cannot be interpreted.
+
+**It is its own upstream pull request, not the lid's.** It shares the lid
+branches locally, but it touches the scheme path and the netcfgd
+relationship, not the lid, and the commit says to extract it before
+submitting. It respects netcfgd's one-way rule: netcfgd needs no change,
+its CLI already exposes profiles. Built into `+lidfix8`.
+
 ## Open: tdelauncher lost its socket once, cause unknown
 
 2026-09-15, eight days into a session. Every attempt to LAUNCH something
@@ -1339,7 +1364,7 @@ appears.
 Built from `scratch/pkg2/`, patched from the `r14.1.x` branches. Three
 packages carry the fixes:
 
-    tdepowersave-trinity   +lidfix7    the docked lid: configurable lock and
+    tdepowersave-trinity   +lidfix8    the docked lid: configurable lock and
                                    action when docked, lid options shown by
                                    lid presence not form factor, panel switch
     kdesktop-trinity       +lockfix2   the control FIFO and the resize loop
@@ -1389,7 +1414,7 @@ Thirty-two packages, measured rather than remembered:
 
     dpkg-query -W -f='${Package} ${Version}\n' | grep -E '\+(lock|lid)fix'
 
-31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix7`.
+31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix8`.
 
 **The reboot is done -- 2026-09-17; what it showed is at the foot of
 this section.** The baseline below was taken first so the run afterwards
