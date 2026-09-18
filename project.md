@@ -342,6 +342,10 @@ this is the only machine here with systemd. `+lidfix4`.
 finding 9.** The dialog hid every lid option on this hardware because TDE
 reports the form factor as Desktop. `+lidfix5` gates them on the lid
 switch instead; `+lidfix6` moved the action checkbox to Button Events.
+`+lidfix7` then made lock-on-lid a three-state combo (do not lock /
+unless docked / even when docked) rather than two checkboxes that could
+express a nonsense fourth state, and moved the lid button to the foot of
+the Button Events list beside its action checkbox.
 
 
 Runtime only for the confirmation: the `kdDebug` trace that would show the
@@ -1335,7 +1339,7 @@ appears.
 Built from `scratch/pkg2/`, patched from the `r14.1.x` branches. Three
 packages carry the fixes:
 
-    tdepowersave-trinity   +lidfix6    the docked lid: configurable lock and
+    tdepowersave-trinity   +lidfix7    the docked lid: configurable lock and
                                    action when docked, lid options shown by
                                    lid presence not form factor, panel switch
     kdesktop-trinity       +lockfix2   the control FIFO and the resize loop
@@ -1385,7 +1389,7 @@ Thirty-two packages, measured rather than remembered:
 
     dpkg-query -W -f='${Package} ${Version}\n' | grep -E '\+(lock|lid)fix'
 
-31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix6`.
+31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix7`.
 
 **The reboot is done -- 2026-09-17; what it showed is at the foot of
 this section.** The baseline below was taken first so the run afterwards
