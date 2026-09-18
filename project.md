@@ -1556,6 +1556,32 @@ real seat. The first version scanned for the user's sessions and took the
 first, which is the systemd user manager -- `Class=manager`, `CanLock=no`
 whatever tdm does, and indistinguishable from the bug being tested for.
 
+### Verification state, 2026-09-18
+
+The tdepowersave work stands at `+lidfix9` and the tdebase work at
+`+lockfix2`, all installed. What is confirmed, and what is only built:
+
+**Confirmed by running it:** the FIFO and session-class fixes, in
+production since 2026-09-06; docked lid-close no longer locking
+(`+lidfix3`); and the lid settings being visible in the dialog
+(`+lidfix5`) plus every dialog since -- the 3-state lock combo, the
+reordered Button Events, the per-scheme Networking page -- by rendering
+the actual generated dialog headlessly.
+
+**Built and wired, not yet exercised live**, all single-display testable:
+the inhibit toggle skipping the idle suspend/dim and the lid-close
+(finding 11); the lock-on-lid combo mapping to behaviour on a non-docked
+machine; and the netcfgd profile firing on a scheme switch (finding 10) --
+set a scheme's profile to `offline`, switch to it, and `ncfg profile get`
+should read `offline` where it now reads `no profile chosen`.
+
+**Needs an external display, so unverified:** the panel-off acting path
+(`switchOffPanelOnLidClose=true`) and anything under finding 8.
+
+`verify-fixes.sh` checks only the original three fixes; the combo,
+`hasLid`, the netcfgd page and the inhibit toggle are verified as above,
+not by that tool.
+
 ## Open questions
 
 - Whether the tdepowersave **lock layer** is patched or replaced. Findings
