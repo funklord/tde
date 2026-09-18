@@ -535,6 +535,21 @@ relationship, not the lid, and the commit says to extract it before
 submitting. It respects netcfgd's one-way rule: netcfgd needs no change,
 its CLI already exposes profiles. Built into `+lidfix8`.
 
+### 11. A tray toggle to temporarily inhibit power management
+
+Asked for late: an easy way to tell tdepowersave to stop suspending,
+dimming and locking for a while. It is a checkable tray item, "Do Not
+Suspend or Lock the Screen", gating at the action points -- the inactivity
+suspend and dim, and the lid-close branch -- rather than stopping timers,
+so the paths that would act just return. Manual suspend/hibernate and the
+power buttons still work (it inhibits the automatic responses, not the
+machine), and a critical battery is left to act. Runtime only, so
+"temporary" is until it is switched off or the session ends, which is the
+semantics the word asks for. A passive popup confirms each toggle -- a
+deliberate click, unlike the per-scheme switches that fire on every
+AC/battery change and are silent. `+lidfix9`. Its own upstream PR, sharing
+the lid branches only locally, like findings 10 and this one's siblings.
+
 ## Open: tdelauncher lost its socket once, cause unknown
 
 2026-09-15, eight days into a session. Every attempt to LAUNCH something
@@ -1364,7 +1379,7 @@ appears.
 Built from `scratch/pkg2/`, patched from the `r14.1.x` branches. Three
 packages carry the fixes:
 
-    tdepowersave-trinity   +lidfix8    the docked lid: configurable lock and
+    tdepowersave-trinity   +lidfix9    the docked lid: configurable lock and
                                    action when docked, lid options shown by
                                    lid presence not form factor, panel switch
     kdesktop-trinity       +lockfix2   the control FIFO and the resize loop
@@ -1414,7 +1429,7 @@ Thirty-two packages, measured rather than remembered:
 
     dpkg-query -W -f='${Package} ${Version}\n' | grep -E '\+(lock|lid)fix'
 
-31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix8`.
+31 at `+lockfix2` and `tdepowersave-trinity` at `+lidfix9`.
 
 **The reboot is done -- 2026-09-17; what it showed is at the foot of
 this section.** The baseline below was taken first so the run afterwards
