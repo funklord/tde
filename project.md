@@ -1320,6 +1320,77 @@ reason: its worst outcome is a machine that stays awake.
   detection code but not the risk profile: one declines to act, this one
   acts.
 
+## Splitting display-off from lock and suspend on lid close -- IMPLEMENTED
+
+**Written 2026-09-22** on `feat/lid-panel-off-r141x`, built as `+lidfix10`.
+The holder's framing, verbatim: display-off, lock and suspend are "3
+disparate things", and on lid close the display should at least switch off
+its light, and switch off driving the internal panel too where that saves
+power and is not risky.
+
+The tangle was real. Both the inhibit gate and the docked-ignore path
+`return`ed early doing nothing, so under a shut lid the internal panel
+stayed lit in exactly the two modes a user reaches for when stowing the
+machine. Upstream's `forceDpmsOffOnLidClose` did blank the display, but
+only in the undocked lock path, and via `xset dpms force off` -- which is
+**global**, so it could never be used docked without blanking the external
+too.
+
+The restructure makes powering the internal panel off its own step, run
+**first and unconditionally** on lid close (session active), before the
+inhibit gate and independent of lock, suspend and the docked policy. A shut
+lid is never being looked at, so this is the one lid-close response that is
+always wanted. `powerSaveInternalDisplay()` picks the mechanism and records
+what it did so the lid-open path undoes exactly that:
+
+- **docked** (an external display is driving): `disableInternalPanel()` --
+  the internal output goes off entirely, light and drive both, external
+  untouched. Restored by the unconditional `restoreInternalPanel()`.
+- **alone** (the internal panel is the only display): `forceDPMSOff()` --
+  a power state, not a configuration change, so no zero-display moment, and
+  it restores on the next input event. Global DPMS is safe here precisely
+  because there is no external to blank. Lid-open resets the scheme to undo
+  the forced xset state.
+- **light-only** (`lidDisplayLightOnly=true`): dim the backlight to nothing
+  and change no display configuration or power state at all. The saved
+  level is restored on lid-open.
+
+### The setting the holder asked for
+
+`lidDisplayLightOnly`, a `[General]` config key, default false. Set, it
+forces the gentle backlight-only mechanism in every case; unset, the fuller
+kill (disable the output docked, DPMS off alone). Its reason is the holder's
+own: "some setups don't seem to be able to handle changes or zero displays",
+so the safe path is one that reconfigures nothing and only darkens the
+backlight. It is a config key rather than a dialog checkbox, matching its
+siblings (`forceDpmsOffOnLidClose`, the retired `switchOffPanelOnLidClose`),
+all of which have always been config-file-only. Surfacing it in the dialog
+is a follow-up if wanted.
+
+### Settings consolidated
+
+`forceDpmsOffOnLidClose` becomes the single master enable for all of the
+above, default on -- the name is now historical (it does more than DPMS) but
+kept so existing configs and an existing `=false` opt-out still read, and
+its code default is raised from false to true to match the shipped rc and
+the holder's "by default" want. `switchOffPanelOnLidClose` (mine, never
+released) is retired, folded into the master; the startup panel-heal now
+gates on the master too. The two stray `forceDPMSOff()` calls inside the
+docked-lock and undocked-lock branches are gone -- the panel is handled once,
+at the top, which also removes the docked case where the global DPMS call
+would have blanked the external.
+
+### What is and is not tested
+
+Built and installed as `+lidfix10`. The **alone** paths are testable on the
+single display this machine has now: inhibit + lid should darken the panel
+where before it stayed lit, and `lidDisplayLightOnly` should dim the
+backlight without touching the display. The **docked** path
+(`disableInternalPanel()` on lid close) still needs a second display, as the
+panel-off section above already records. Restore correctness (brightness
+level round-trip, DPMS scheme reset) is by construction from the recorded
+mode, not yet observed across a real lid cycle.
+
 ## GTK applications opening a folder get Cervisia -- FIXED
 
 **Fixed 2026-09-08** on `fix/directory-mime-default` (master) and
@@ -1558,8 +1629,9 @@ whatever tdm does, and indistinguishable from the bug being tested for.
 
 ### Verification state, 2026-09-18
 
-The tdepowersave work stands at `+lidfix9` and the tdebase work at
-`+lockfix2`, all installed. What is confirmed, and what is only built:
+The tdepowersave work stands at `+lidfix10` (built; installed once the
+holder runs `dpkg -i`) and the tdebase work at `+lockfix2`, installed. What
+is confirmed, and what is only built:
 
 **Confirmed by running it:** the FIFO and session-class fixes, in
 production since 2026-09-06; docked lid-close no longer locking
@@ -1571,12 +1643,16 @@ the actual generated dialog headlessly.
 **Built and wired, not yet exercised live**, all single-display testable:
 the inhibit toggle skipping the idle suspend/dim and the lid-close
 (finding 11); the lock-on-lid combo mapping to behaviour on a non-docked
-machine; and the netcfgd profile firing on a scheme switch (finding 10) --
+machine; the netcfgd profile firing on a scheme switch (finding 10) --
 set a scheme's profile to `offline`, switch to it, and `ncfg profile get`
-should read `offline` where it now reads `no profile chosen`.
+should read `offline` where it now reads `no profile chosen`; and the
+display-off split (`+lidfix10`) on its **alone** paths -- inhibit + lid
+darkening the panel where it used to stay lit, and `lidDisplayLightOnly`
+dimming the backlight without touching the display.
 
-**Needs an external display, so unverified:** the panel-off acting path
-(`switchOffPanelOnLidClose=true`) and anything under finding 8.
+**Needs an external display, so unverified:** the display-off **docked**
+path (`disableInternalPanel()` on lid close, external stays lit) and
+anything under finding 8.
 
 `verify-fixes.sh` checks only the original three fixes; the combo,
 `hasLid`, the netcfgd page and the inhibit toggle are verified as above,
