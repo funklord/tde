@@ -1362,10 +1362,21 @@ forces the gentle backlight-only mechanism in every case; unset, the fuller
 kill (disable the output docked, DPMS off alone). Its reason is the holder's
 own: "some setups don't seem to be able to handle changes or zero displays",
 so the safe path is one that reconfigures nothing and only darkens the
-backlight. It is a config key rather than a dialog checkbox, matching its
-siblings (`forceDpmsOffOnLidClose`, the retired `switchOffPanelOnLidClose`),
-all of which have always been config-file-only. Surfacing it in the dialog
-is a follow-up if wanted.
+backlight.
+
+It is surfaced (`+lidfix11`) as a checkable tray menu entry, "Dim Display
+Only on Lid Close", beside the inhibit toggle -- the holder asked for a menu
+entry rather than the dialog checkbox first proposed. Unlike inhibit, which
+is a runtime-only temporary state, this is a persistent preference, so the
+toggle writes the setting back. The write has to go through the app's own
+writable config, because `Settings` holds a read-only handle to
+`tdepowersaverc` and reparses the general group on every lid close; writing
+the same file and setting the in-memory flag keeps the menu, the file and a
+lid close before the next reparse in agreement. The entry is shown only when
+`hwinfo->hasLid()`, matching how the dialog gates its lid settings, and that
+is valid at menu-build time because `intialiseHWInfo()` runs in the hardware
+object's constructor. `forceDpmsOffOnLidClose`, the master, remains
+config-file-only.
 
 ### Settings consolidated
 
@@ -1629,9 +1640,9 @@ whatever tdm does, and indistinguishable from the bug being tested for.
 
 ### Verification state, 2026-09-18
 
-The tdepowersave work stands at `+lidfix10` (built; installed once the
-holder runs `dpkg -i`) and the tdebase work at `+lockfix2`, installed. What
-is confirmed, and what is only built:
+The tdepowersave work stands at `+lidfix11` (built; installed through
+`+lidfix10`, the menu toggle awaiting a `dpkg -i`) and the tdebase work at
+`+lockfix2`, installed. What is confirmed, and what is only built:
 
 **Confirmed by running it:** the FIFO and session-class fixes, in
 production since 2026-09-06; docked lid-close no longer locking
@@ -1650,9 +1661,11 @@ the inhibit toggle skipping the idle suspend/dim and the lid-close
 machine; the netcfgd profile firing on a scheme switch (finding 10) --
 set a scheme's profile to `offline`, switch to it, and `ncfg profile get`
 should read `offline` where it now reads `no profile chosen`; and the
-display-off split's `lidDisplayLightOnly` path (`+lidfix10`), which should
-dim the backlight without touching the display (its inhibit + lid alone
-path is now confirmed, above).
+display-off split's `lidDisplayLightOnly` path, now reachable from the
+"Dim Display Only on Lid Close" tray toggle (`+lidfix11`): checking it and
+closing the lid should dim the backlight without touching the display, and
+the choice should persist across a restart (its inhibit + lid alone path is
+already confirmed, above).
 
 **Needs an external display, so unverified:** the display-off **docked**
 path (`disableInternalPanel()` on lid close, external stays lit) and
