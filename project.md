@@ -1635,10 +1635,14 @@ is confirmed, and what is only built:
 
 **Confirmed by running it:** the FIFO and session-class fixes, in
 production since 2026-09-06; docked lid-close no longer locking
-(`+lidfix3`); and the lid settings being visible in the dialog
+(`+lidfix3`); the lid settings being visible in the dialog
 (`+lidfix5`) plus every dialog since -- the 3-state lock combo, the
 reordered Button Events, the per-scheme Networking page -- by rendering
-the actual generated dialog headlessly.
+the actual generated dialog headlessly; and, on `+lidfix10`, the
+display-off split's **alone** path in inhibit mode -- with the inhibit
+toggle on, closing the lid on the single display now powers the panel off
+(DPMS) where before inhibit skipped it and it stayed lit, and the machine
+stays awake. Confirmed by the holder 2026-09-24.
 
 **Built and wired, not yet exercised live**, all single-display testable:
 the inhibit toggle skipping the idle suspend/dim and the lid-close
@@ -1646,9 +1650,9 @@ the inhibit toggle skipping the idle suspend/dim and the lid-close
 machine; the netcfgd profile firing on a scheme switch (finding 10) --
 set a scheme's profile to `offline`, switch to it, and `ncfg profile get`
 should read `offline` where it now reads `no profile chosen`; and the
-display-off split (`+lidfix10`) on its **alone** paths -- inhibit + lid
-darkening the panel where it used to stay lit, and `lidDisplayLightOnly`
-dimming the backlight without touching the display.
+display-off split's `lidDisplayLightOnly` path (`+lidfix10`), which should
+dim the backlight without touching the display (its inhibit + lid alone
+path is now confirmed, above).
 
 **Needs an external display, so unverified:** the display-off **docked**
 path (`disableInternalPanel()` on lid close, external stays lit) and
