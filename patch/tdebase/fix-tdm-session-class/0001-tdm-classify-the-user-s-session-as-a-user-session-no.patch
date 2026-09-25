@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Sun, 6 Sep 2026 18:28:52 +0200
+Subject: [PATCH] tdm: classify the user's session as a user session, not a
+ greeter
+
+tdm has been registering every logged-in session with logind as class
+"greeter". XDG_SESSION_CLASS=greeter is put into the PAM environment by
+doPAMAuth(), which authenticates the person logging in, and the same PAM
+handle is carried through to pam_open_session() with nothing resetting it
+in between. There is exactly one pam_start() and one pam_open_session() in
+the backend, and the greeter has no PAM session of its own, so the only
+session that value ever reached was the user's.
+
+The visible cost is that such a session is not lockable. logind derives
+CanLock from the class at session creation and reports false for a
+greeter, and CanLock is a const property, so nothing can correct it later:
+loginctl lock-session, the Lock and Unlock signals and SetLockedHint are
+all inert for the logged-in user. Measured on a TDE 14.1.6 desktop, where
+the session shows Service=tdm-trinity, Type=x11, Class=greeter and
+CanLock=false.
+
+systemd gates this on the class directly, in src/login/logind-session.h:
+
+    /* Which session classes have a lock screen concept? */
+    #define SESSION_CLASS_CAN_LOCK(class) \
+            (IN_SET((class), SESSION_USER, SESSION_USER_EARLY))
+
+SESSION_GREETER is excluded there and in SESSION_CLASS_CAN_STOP_ON_IDLE,
+and those two are the whole difference: CAN_IDLE, CAN_DISPLAY,
+CAN_TAKE_DEVICE and CAN_CHANGE_TYPE all admit a greeter already. So this
+restores lockability and stop-on-idle, and changes nothing else.
+
+It cannot ever have worked as intended. pam_systemd acts in the session
+phase rather than the authentication phase, so a class set before
+pam_authenticate() has no effect until a session is opened, and the only
+session opened here belongs to the user.
+
+Set it where the code already observes that the greeter has gone, which is
+immediately before the session is opened, and read the result of
+pam_putenv() rather than discarding it as the original line did.
+
+This changes what logind is told about the session. It does not change who
+may authenticate, and it grants no new rights: a session classified as a
+user session is what an ordinary login already is everywhere else.
+---
+ tdm/backend/client.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/tdm/backend/client.c b/tdm/backend/client.c
+index 5a699738e..d3f6049b0 100644
+--- a/tdm/backend/client.c
++++ b/tdm/backend/client.c
+@@ -396,7 +396,6 @@ doPAMAuth( const char *psrv, struct pam_data *pdata )
+ # ifdef PAM_FAIL_DELAY
+ 	pam_set_item( pamh, PAM_FAIL_DELAY, (void *)fail_delay );
+ # endif
+-	pretc = pam_putenv( pamh, "XDG_SESSION_CLASS=greeter" );
+ 	ReInitErrorLog();
+ 
+ 	Debug( " pam_authenticate() ...\n" );
+@@ -1377,6 +1376,19 @@ StartClient()
+ 
+ #ifdef USE_PAM
+ 	/* the greeter is gone by now ... */
++
++	/*
++	 * ... so the session about to be opened is the user's, and it must be
++	 * classified as such. logind derives a session's class from this at
++	 * pam_open_session() time, and a session it believes to be a login
++	 * greeter is not lockable: CanLock stays false, which is a const
++	 * property fixed at session creation, so loginctl lock-session and the
++	 * Lock and Unlock signals never work for the logged-in user.
++	 */
++	if ((pretc = pam_putenv( pamh, "XDG_SESSION_CLASS=user" )) != PAM_SUCCESS)
++		LogError( "pam_putenv(XDG_SESSION_CLASS) failed: %s\n",
++		          pam_strerror( pamh, pretc ) );
++
+ 	pconv.conv = PAM_conv_null;
+ 	pconv.appdata_ptr = 0;
+ 	if ((pretc = pam_set_item( pamh, PAM_CONV, &pconv )) != PAM_SUCCESS) {

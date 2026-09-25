@@ -15,6 +15,15 @@ changes, re-export it rather than editing the patches by hand.
     tdepowersave/feat-lid-panel-off-r141x/   the stable series (r14.1.x)
     tdepowersave/feat-lid-panel-off/         the master twin
 
+    tdebase/fix-lock-fifo-per-user{,-r141x}/     the lock control FIFOs
+    tdebase/fix-tdm-session-class{,-r141x}/      the greeter/user session class
+    tdebase/fix-lock-resize-retry{,-r141x}/      the locker resize loop bound
+    tdebase/fix-directory-mime-default{,-r141x}/ folders open in the file manager
+
+Each tdebase branch is a single commit, exported for both the master and
+the r14.1.x line. As with tdepowersave, the r141x side is the one built and
+installed here.
+
 Both are the same twelve commits -- the docked lid policy, the form-factor
 (`hasLid`) fix, the lock-mode combo, the per-scheme netcfgd profile, the
 inhibit toggle, the panel-off mechanism, and the display-off split with its
@@ -39,12 +48,6 @@ export for it.
     cd <a fresh r14.1.6 tdepowersave clone>
     git checkout -b feat/lid-panel-off-r141x r14.1.6
     git am <this>/tdepowersave/feat-lid-panel-off-r141x/*.patch
-
-## Still only on this machine
-
-The tdebase work -- `fix/lock-fifo-per-user`, `fix/tdm-session-class` and
-their `-r141x` backports -- lives in a separate clone and is not exported
-here yet. It wants the same treatment.
 
 ## Before these go upstream
 

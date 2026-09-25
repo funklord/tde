@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Tue, 8 Sep 2026 21:26:07 +0200
+Subject: [PATCH] konqueror: name the file manager as the default for
+ inode/directory
+
+An application outside TDE asking to open a folder gets Cervisia, which
+then reports that the folder is not a CVS folder. Anything using xdg-open
+or gio reaches it, so this is what GTK programs do when they offer to show
+a download in its folder.
+
+Nothing chose Cervisia. With no default recorded for a type, the choice
+falls to whatever sorts first in mimeinfo.cache among the desktop files
+claiming it:
+
+    inode/directory=tde-cervisia.desktop;tde-kfmclient_dir.desktop;
+
+Cervisia claims inode/directory because it is a Konqueror view for CVS
+working copies, and "cervisia" sorts before "kfmclient". That is the whole
+of the mechanism.
+
+Its claim is not wrong and cannot simply be dropped. Cervisia registers no
+service file of its own, so that MimeType line is how the KPart is
+registered, and removing it would take the CVS view out of Konqueror.
+Naming the file manager settles the question without touching Cervisia.
+
+Ship the defaults list under the name a TDE session reads,
+tde-mimeapps.list, so it applies when XDG_CURRENT_DESKTOP names TDE and
+leaves a machine running another desktop alone. It installs beside the
+application directories rather than inside XDG_APPS_INSTALL_DIR, which is
+applications/tde: the specification looks for the list in applications/
+itself.
+
+Verified by building into a staging prefix and putting it ahead in
+XDG_DATA_DIRS, with a config home of its own so no user setting could
+answer instead: the query returns the file manager with the staged tree
+present and Cervisia without it.
+---
+ konqueror/CMakeLists.txt    |  9 +++++++++
+ konqueror/tde-mimeapps.list | 21 +++++++++++++++++++++
+ 2 files changed, 30 insertions(+)
+ create mode 100644 konqueror/tde-mimeapps.list
+
+diff --git a/konqueror/CMakeLists.txt b/konqueror/CMakeLists.txt
+index aa6091502..dc90fa8a7 100644
+--- a/konqueror/CMakeLists.txt
++++ b/konqueror/CMakeLists.txt
+@@ -78,6 +78,15 @@ tde_create_translated_desktop(
+   PO_DIR konqueror-desktops
+ )
+ 
++# Not a desktop file: the XDG defaults list for a TDE session. It belongs in
++# applications/ itself rather than XDG_APPS_INSTALL_DIR, which is
++# applications/tde -- the specification looks for it beside the application
++# directories, not inside them.
++install(
++  FILES tde-mimeapps.list
++  DESTINATION ${SHARE_INSTALL_PREFIX}/applications
++)
++
+ set( PROFILEDIR ${DATA_INSTALL_DIR}/konqueror/profiles )
+ 
+ tde_create_translated_desktop(
+diff --git a/konqueror/tde-mimeapps.list b/konqueror/tde-mimeapps.list
+new file mode 100644
+index 000000000..5e828b30d
+--- /dev/null
++++ b/konqueror/tde-mimeapps.list
+@@ -0,0 +1,21 @@
++# Default applications for a TDE session.
++#
++# Read only when XDG_CURRENT_DESKTOP names TDE, so a machine running some
++# other desktop with TDE applications installed is not disturbed by it.
++#
++# Without an entry here the choice falls to whatever sorts first in
++# mimeinfo.cache among the desktop files claiming the type, which is not a
++# choice anybody made. For inode/directory that is cervisia.desktop: it
++# claims the type because Cervisia is a Konqueror view for CVS working
++# copies, and "cervisia" sorts before "kfmclient". The result is that an
++# application outside TDE asking to open a folder -- through xdg-open or
++# gio, as GTK programs do -- gets a CVS front-end which then reports that
++# the folder is not a CVS folder.
++#
++# Cervisia's claim is not wrong and cannot simply be dropped: that MimeType
++# line is how the KPart is registered, and removing it would take the CVS
++# view out of Konqueror. Naming the file manager here settles it without
++# touching Cervisia at all.
++
++[Default Applications]
++inode/directory=tde-kfmclient_dir.desktop

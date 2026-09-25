@@ -1,0 +1,155 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Sun, 6 Sep 2026 18:14:02 +0200
+Subject: [PATCH] kdesktop: put the lock control FIFOs in the per-user socket
+ directory
+
+kdesktop_lock creates two control FIFOs and has been unable to create
+either of them for any ordinary user. They were placed in
+/tmp/tdesocket-global, which tdm creates as root before anyone logs in, so
+mknod() failed with EACCES on every lock attempt. On one desktop this
+produced 83 identical warnings in a single session, and the message it
+prints is the only sign of it: neither mknod() nor mkdir() had its return
+value read, so the failure surfaced indirectly and looked like a warning
+about an optional feature rather than a feature that had never once
+worked.
+
+The directory creation could not have helped even without the ownership
+problem. mkdir(FIFO_DIR, 0644) asks for a directory with no execute bit,
+which cannot be entered to create anything inside it.
+
+A shared directory is the wrong home regardless. The inbound FIFO accepts
+commands that dismiss the unlock dialog and display arbitrary text, and
+the outbound one carries the PIN the user has typed. Making the shared
+directory writable so that every user could create their own nodes would
+let any local user pre-create another user's control socket, drive their
+lock screen and read their PIN. That is a worse fault than the one being
+fixed.
+
+Resolve the location from TDEGlobal::dirs() instead. The socket resource
+is per-user and per-host and tdelibs creates it mode 0700, which is what
+these FIFOs need; both are created 0600 rather than the inbound one being
+world-readable. A privileged helper running as root reaches them exactly
+as before, and a module running as another user no longer can.
+
+Report a failing mknod() with its errno and treat an existing FIFO as the
+success it is, chmod()ing only what was actually created.
+
+Drop the umask handling rather than repair it. The original set umask(0)
+process-wide and never restored it, and this runs in a worker thread, so
+any file the rest of the process created in that window got whatever mode
+it asked for. It was never needed: a umask can only clear bits, 0600 has
+none a sane one would clear, and the chmod sets the mode outright.
+---
+ kdesktop/lock/lockprocess.cpp | 62 +++++++++++++++++++++++++++++------
+ kdesktop/lock/lockprocess.h   |  9 +++--
+ 2 files changed, 58 insertions(+), 13 deletions(-)
+
+diff --git a/kdesktop/lock/lockprocess.cpp b/kdesktop/lock/lockprocess.cpp
+index 776d3c50a..00b09303f 100644
+--- a/kdesktop/lock/lockprocess.cpp
++++ b/kdesktop/lock/lockprocess.cpp
+@@ -78,6 +78,7 @@
+ #include <sys/resource.h>
+ #endif
+ #include <stdio.h>
++#include <string.h>
+ #include <sys/stat.h>
+ #include <unistd.h>
+ #include <errno.h>
+@@ -2997,24 +2998,65 @@ void ControlPipeHandlerObject::run(void) {
+ 		return;
+ 	}
+ 
++	/*
++	 * These FIFOs are privileged. The inbound one accepts commands that
++	 * dismiss the unlock dialog and display arbitrary text, and the
++	 * outbound one carries the PIN the user has typed. They therefore
++	 * belong in the per-user socket directory, which tdelibs creates mode
++	 * 0700, and not in a directory shared with every other user of the
++	 * machine.
++	 *
++	 * The shared /tmp/tdesocket-global was unusable in practice as well as
++	 * unsafe: tdm creates it as root before any user logs in, so mknod()
++	 * here failed with EACCES on every lock for an ordinary user.
++	 */
++	TQString socket_dir = TDEGlobal::dirs()->saveLocation("socket");
++	if (socket_dir.isEmpty()) {
++		printf("[kdesktop_lock] Warning: no per-user socket directory available. Interactive logon modules may not function properly.\n");
++		mRunning = false;
++		TQApplication::eventLoop()->exit(-1);
++		return;
++	}
++
+ 	char fifo_file[PATH_MAX];
+ 	char fifo_file_out[PATH_MAX];
+-	snprintf(fifo_file, PATH_MAX, FIFO_FILE, display_number);
+-	snprintf(fifo_file_out, PATH_MAX, FIFO_FILE_OUT, display_number);
+-
+-	/* Create the FIFOs if they do not exist */
+-	umask(0);
+-	mkdir(FIFO_DIR,0644);
+-	mknod(fifo_file, S_IFIFO|0644, 0);
+-	chmod(fifo_file, 0644);
++	snprintf(fifo_file, PATH_MAX, "%s/" FIFO_FILE_NAME,
++		 socket_dir.local8Bit().data(), display_number);
++	snprintf(fifo_file_out, PATH_MAX, "%s/" FIFO_FILE_OUT_NAME,
++		 socket_dir.local8Bit().data(), display_number);
++
++	/*
++	 * Create the FIFOs if they do not exist. An existing FIFO is not an
++	 * error; any other failure is, and is reported here rather than left
++	 * to surface as an unexplained absence later.
++	 *
++	 * No umask juggling. The original set umask(0) process-wide and never
++	 * restored it, and this runs in a worker thread, so any file the rest
++	 * of the process created meanwhile got whatever mode it asked for. It
++	 * was never needed either: a umask can only clear bits, 0600 has none
++	 * that a sane one would clear, and the chmod below sets the mode
++	 * outright regardless of umask.
++	 */
++	if (mknod(fifo_file, S_IFIFO|0600, 0) != 0 && errno != EEXIST) {
++		printf("[kdesktop_lock] Warning: cannot create control socket '%s': %s. Interactive logon modules may not function properly.\n",
++		       fifo_file, strerror(errno));
++	}
++	else {
++		chmod(fifo_file, 0600);
++	}
+ 
+ 	mParent->mPipe_fd = open(fifo_file, O_RDONLY | O_NONBLOCK);
+ 	if (mParent->mPipe_fd > -1) {
+ 		mParent->mPipeOpen = true;
+ 	}
+ 
+-	mknod(fifo_file_out, S_IFIFO|0600, 0);
+-	chmod(fifo_file_out, 0600);
++	if (mknod(fifo_file_out, S_IFIFO|0600, 0) != 0 && errno != EEXIST) {
++		printf("[kdesktop_lock] Warning: cannot create control socket '%s': %s. Interactive logon modules may not function properly.\n",
++		       fifo_file_out, strerror(errno));
++	}
++	else {
++		chmod(fifo_file_out, 0600);
++	}
+ 
+ 	mParent->mPipe_fd_out = open(fifo_file_out, O_RDWR | O_NONBLOCK);
+ 	if (mParent->mPipe_fd_out > -1) {
+diff --git a/kdesktop/lock/lockprocess.h b/kdesktop/lock/lockprocess.h
+index e7219cfab..e87216d23 100644
+--- a/kdesktop/lock/lockprocess.h
++++ b/kdesktop/lock/lockprocess.h
+@@ -40,9 +40,12 @@ struct GreeterPluginHandle {
+ 	kgreeterplugin_info *info;
+ };
+ 
+-#define FIFO_DIR "/tmp/tdesocket-global"
+-#define FIFO_FILE "/tmp/tdesocket-global/kdesktoplockcontrol-%d"
+-#define FIFO_FILE_OUT "/tmp/tdesocket-global/kdesktoplockcontrol_out-%d"
++/*
++ * Names only. The directory is the per-user socket location resolved at
++ * runtime from TDEGlobal::dirs(); see ControlPipeHandlerObject::run().
++ */
++#define FIFO_FILE_NAME "kdesktoplockcontrol-%d"
++#define FIFO_FILE_OUT_NAME "kdesktoplockcontrol_out-%d"
+ 
+ typedef TQValueList<Window> TQXLibWindowList;
+ 

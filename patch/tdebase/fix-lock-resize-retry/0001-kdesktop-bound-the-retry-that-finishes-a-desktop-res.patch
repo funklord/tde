@@ -1,0 +1,136 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Mon, 7 Sep 2026 14:31:07 +0200
+Subject: [PATCH] kdesktop: bound the retry that finishes a desktop resize
+
+doDesktopResizeFinish() re-armed itself at zero milliseconds for as long
+as closeCurrentWindow() kept reporting true, with no cap on the number of
+attempts. That function reports true for as long as anything remains in
+mDialogs, and a dialog leaves that list only once its exec() has returned,
+so a dialog that declines to close turns this into a busy loop at whatever
+rate the event loop turns: the screen stays mid-resize, the resize never
+finishes, and the process sits on a core indefinitely.
+
+Retry on a real interval rather than as fast as possible, and give up
+after a bounded time rather than never. Fifty milliseconds and forty
+attempts is two seconds, which is generous for a dialog that is going to
+close at all.
+
+Finishing the resize with a stale dialog on screen is the better of the
+two outcomes available once the budget is gone, so the giving-up path
+falls through rather than returning, and puts mClosingWindows and
+mForceReject back to rest so the next resize starts from a clean state.
+
+Bound the wait on mDialogControlLock in the same function while here.
+Every site that sets that flag clears it before returning, so the ceiling
+should never be reached, but an unbounded spin inside a screen locker is a
+hang with no way out for the person sitting in front of it.
+
+This matters more than its rarity suggests. A desktop resize while the
+screen is locked is exactly what a laptop does when its lid closes onto an
+external display, and anything that disables an output on lid close would
+make it the common case rather than the unusual one.
+---
+ kdesktop/lock/lockprocess.cpp | 58 ++++++++++++++++++++++++++++++++---
+ kdesktop/lock/lockprocess.h   |  2 ++
+ 2 files changed, 56 insertions(+), 4 deletions(-)
+
+diff --git a/kdesktop/lock/lockprocess.cpp b/kdesktop/lock/lockprocess.cpp
+index e0eeed05d..79f8ab783 100644
+--- a/kdesktop/lock/lockprocess.cpp
++++ b/kdesktop/lock/lockprocess.cpp
+@@ -209,6 +209,7 @@ LockProcess::LockProcess()
+ 	mPipeOpen_out(false),
+ 	mInfoMessageDisplayed(false),
+ 	mDialogControlLock(false),
++	mResizeCloseAttempts(0),
+ 	mForceReject(false),
+ 	currentDialog(NULL),
+ 	mEnsureScreenHiddenTimer(NULL),
+@@ -1069,20 +1070,69 @@ void LockProcess::desktopResized()
+ 		resizeTimer = new TQTimer( this );
+ 		connect( resizeTimer, TQ_SIGNAL(timeout()), this, TQ_SLOT(doDesktopResizeFinish()) );
+ 	}
++	mResizeCloseAttempts = 0;
+ 	resizeTimer->start( 100, true ); // 100 millisecond single shot timer; should allow display switching operations to finish before hack is started
+ }
+ 
++/*
++ * Retry budget for closing dialogs after a desktop resize. closeCurrentWindow()
++ * reports true for as long as anything remains in mDialogs, and a dialog leaves
++ * that list only once its exec() has returned, so a dialog that declines to
++ * close used to re-arm this slot at zero milliseconds for ever: a busy loop at
++ * whatever rate the event loop turns, with the screen mid-resize and the
++ * process pinned to a core.
++ *
++ * Retry on a real interval instead of as fast as possible, and give up after a
++ * bounded time rather than never.
++ */
++#define RESIZE_CLOSE_RETRY_MS 50
++#define RESIZE_CLOSE_MAX_ATTEMPTS 40    /* 50ms * 40 == 2 seconds */
++
++/*
++ * Ceiling on the wait for mDialogControlLock. Every site that sets the flag
++ * clears it before returning, so this should never be reached; it is bounded
++ * because an unbounded spin inside a screen locker is a hang nobody can escape,
++ * and because a display change is about to become a far more frequent event
++ * than it has been.
++ */
++#define DIALOG_LOCK_MAX_SPINS 20        /* 100ms * 20 == 2 seconds */
++
+ void LockProcess::doDesktopResizeFinish()
+ {
+-	while (mDialogControlLock == true) {
++	int spins = 0;
++	while (mDialogControlLock == true && spins < DIALOG_LOCK_MAX_SPINS) {
+ 		usleep(100000);
++		spins++;
++	}
++	if (mDialogControlLock == true) {
++		kdWarning() << "kdesktop_lock: dialog control lock still held after "
++		            << (DIALOG_LOCK_MAX_SPINS / 10) << "s; continuing anyway "
++		            << "rather than spinning for ever." << endl;
+ 	}
++
+ 	mDialogControlLock = true;
+ 	if (closeCurrentWindow()) {
+-		TQTimer::singleShot( 0, this, TQ_SLOT(doDesktopResizeFinish()) );
+-		mDialogControlLock = false;
+-		return;
++		if (mResizeCloseAttempts < RESIZE_CLOSE_MAX_ATTEMPTS) {
++			mResizeCloseAttempts++;
++			TQTimer::singleShot( RESIZE_CLOSE_RETRY_MS, this,
++			                     TQ_SLOT(doDesktopResizeFinish()) );
++			mDialogControlLock = false;
++			return;
++		}
++
++		/*
++		 * Out of budget with a dialog still open. Finishing the resize with
++		 * a stale dialog on screen is the better of the two outcomes: the
++		 * alternative is never finishing it at all. Put the closing state
++		 * back to rest so the next resize starts clean.
++		 */
++		kdWarning() << "kdesktop_lock: a dialog did not close after "
++		            << RESIZE_CLOSE_MAX_ATTEMPTS << " attempts; finishing the "
++		            << "desktop resize regardless." << endl;
++		mClosingWindows = false;
++		mForceReject = false;
+ 	}
++	mResizeCloseAttempts = 0;
+ 	mDialogControlLock = false;
+ 
+ 	// Restart the hack as the window size is now different
+diff --git a/kdesktop/lock/lockprocess.h b/kdesktop/lock/lockprocess.h
+index b0e33aad2..921304aeb 100644
+--- a/kdesktop/lock/lockprocess.h
++++ b/kdesktop/lock/lockprocess.h
+@@ -229,6 +229,8 @@ class LockProcess : public TQWidget
+ 
+ 		bool        mInfoMessageDisplayed;
+ 		bool        mDialogControlLock;
++		//! retries left for closing dialogs after a desktop resize
++		int         mResizeCloseAttempts;
+ 		bool        mForceReject;
+ 		TQDialog    *currentDialog;
+ 
