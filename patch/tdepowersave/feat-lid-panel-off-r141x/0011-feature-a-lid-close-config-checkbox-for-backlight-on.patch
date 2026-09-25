@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Fri, 25 Sep 2026 09:55:41 +0200
+Subject: [PATCH 11/12] feature: a lid-close config checkbox for backlight-only
+ display-off
+
+lidDisplayLightOnly is a permanent per-machine compatibility setting for
+desktops and software that break when the display configuration changes,
+not a situational runtime toggle -- so it belongs in the lid-close button
+configuration rather than in the tray menu, where an earlier attempt had
+put it.
+
+Add "On lid close, switch off only the backlight, not the display" to the
+Button Events page, directly under the docked lid-action option, with a
+tooltip stating the compatibility purpose. Load and save it in the general
+group alongside the other lid settings, and hide it when the machine has no
+lid, exactly as the lock-mode combo and the docked action are hidden. When
+checked, a lid close only dims the backlight and never touches the display;
+unchecked, the display itself is switched off, which is the default.
+---
+ src/configure_Dialog.ui | 11 ++++++++++-
+ src/configuredialog.cpp |  4 ++++
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/configure_Dialog.ui b/src/configure_Dialog.ui
+index b4eacc4..8b78df3 100644
+--- a/src/configure_Dialog.ui
++++ b/src/configure_Dialog.ui
+@@ -1731,7 +1731,15 @@
+                                         <string>Perform the lid-close action, even when docked</string>
+                                     </property>
+                                 </widget>
+-                                <spacer row="6" column="2">
++                                <widget class="TQCheckBox" row="6" column="0" rowspan="1" colspan="3">
++                                    <property name="name">
++                                        <cstring>cB_lidDisplayLightOnly</cstring>
++                                    </property>
++                                    <property name="text">
++                                        <string>On lid close, switch off only the backlight, not the display</string>
++                                    </property>
++                                </widget>
++                                <spacer row="7" column="2">
+                                     <property name="name">
+                                         <cstring>spacer89</cstring>
+                                     </property>
+@@ -2654,6 +2662,7 @@
+     <tabstop>cB_LidcloseButton</tabstop>
+     <tabstop>cB_SuspendButton</tabstop>
+     <tabstop>cB_S2DiskButton</tabstop>
++    <tabstop>cB_lidDisplayLightOnly</tabstop>
+     <tabstop>cB_acScheme</tabstop>
+     <tabstop>cB_batteryScheme</tabstop>
+     <tabstop>cB_lockSuspend</tabstop>
+diff --git a/src/configuredialog.cpp b/src/configuredialog.cpp
+index 04e30e9..a8cd6d7 100644
+--- a/src/configuredialog.cpp
++++ b/src/configuredialog.cpp
+@@ -129,6 +129,7 @@ ConfigureDialog::ConfigureDialog( TDEConfig *_config, HardwareInfo *_hwinfo, Set
+ 		tL_lockLid->hide();
+ 		cB_lockLidMode->hide();
+ 		cB_actionLidDocked->hide();
++		cB_lidDisplayLightOnly->hide();
+ 	}
+ 	// hide CPU Freq page if not supported
+ 	if (!hwinfo->supportCPUFreq()) {
+@@ -321,6 +322,7 @@ void ConfigureDialog::setTooltips(){
+ 	TQToolTip::add(cB_lockSuspend, i18n("If selected, the screen is locked on suspend or standby."));
+ 	TQToolTip::add(cB_lockLidMode, i18n("Whether the screen is locked when the lid is closed: never, only when the machine is not docked (no external display connected), or always."));
+ 	TQToolTip::add(cB_actionLidDocked, i18n("If selected, the configured lid-close action still runs while an external display is connected (docked)."));
++	TQToolTip::add(cB_lidDisplayLightOnly, i18n("A compatibility option for desktops or software that break when the display configuration changes. If selected, closing the lid only switches the backlight off and never turns the display off or reconfigures it. Otherwise the display itself is switched off on lid close."));
+ 
+ 	TQToolTip::add(cB_autoSuspend, i18n("Check this box to enable or disable automatic suspension of "
+ 					   "the computer."));
+@@ -719,6 +721,7 @@ void ConfigureDialog::setGeneralSettings() {
+ 	bool lockLidDocked = tdeconfig->readBoolEntry("lockOnLidCloseWhenDocked",false);
+ 	cB_lockLidMode->setCurrentItem( !lockLid ? 0 : (lockLidDocked ? 2 : 1) );
+ 	cB_actionLidDocked->setChecked(tdeconfig->readBoolEntry("performLidActionWhenDocked",false));
++	cB_lidDisplayLightOnly->setChecked(tdeconfig->readBoolEntry("lidDisplayLightOnly",false));
+ 	cB_autostart->setChecked(tdeconfig->readBoolEntry("Autostart",false));
+ 	cB_autostart_neverAsk->setChecked(tdeconfig->readBoolEntry("AutostartNeverAsk",false));
+ 
+@@ -897,6 +900,7 @@ void ConfigureDialog::saveGeneralSettings() {
+ 	tdeconfig->writeEntry("lockOnLidClose", cB_lockLidMode->currentItem() >= 1);
+ 	tdeconfig->writeEntry("lockOnLidCloseWhenDocked", cB_lockLidMode->currentItem() == 2);
+ 	tdeconfig->writeEntry("performLidActionWhenDocked",cB_actionLidDocked->isOn());
++	tdeconfig->writeEntry("lidDisplayLightOnly",cB_lidDisplayLightOnly->isOn());
+ 	tdeconfig->writeEntry("Autostart",cB_autostart->isOn());
+ 	tdeconfig->writeEntry("AutostartNeverAsk",cB_autostart_neverAsk->isOn());
+ 

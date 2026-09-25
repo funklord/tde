@@ -1,0 +1,357 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Fri, 18 Sep 2026 11:12:50 +0200
+Subject: [PATCH 07/12] feature: a per-scheme netcfgd network profile, detected
+ not linked
+
+A power scheme can now carry a netcfgd profile to switch to when it
+activates -- so choosing a battery-saving scheme can trim network
+features, with netcfgd deciding what the profile does and tdepowersave
+only naming which profile goes with which scheme.
+
+No link to netcfgd: detection is TDEGlobal::dirs()->findExe("ncfg"), and
+the work is `ncfg profile list` to fill the combo and `ncfg profile set`
+to switch, the same shell-out shape the panel-off code uses for xrandr.
+The set runs without a shell so a configured name cannot be interpreted;
+the list is read through a pipe because it takes no input.
+
+It is a new "Networking" page in the per-scheme toolbox, shown only when
+ncfg is present and removed otherwise, holding one combo -- (no profile
+switching) or a profile by name. The selection is stored by name, not
+index, so it survives the profile list changing and an unknown name falls
+back to not switching. On activation, if a scheme names a profile and ncfg
+is present, the profile is set silently -- schemes flip on every
+AC/battery change and a popup each time would be noise -- and a failure is
+shown as a text line on the page instead, cleared on the next success.
+
+This is a distinct feature from the lid work it currently shares a branch
+with, and reads onto its own upstream pull request: it touches the scheme
+path and the netcfgd relationship, not the lid. Extract it before
+submitting.
+---
+ src/configure_Dialog.ui | 74 +++++++++++++++++++++++++++++++++++++++++
+ src/configuredialog.cpp | 32 ++++++++++++++++++
+ src/settings.cpp        | 61 +++++++++++++++++++++++++++++++++
+ src/settings.h          | 18 ++++++++++
+ src/tdepowersave.cpp    | 26 +++++++++++++++
+ src/tdepowersave.h      |  2 ++
+ 6 files changed, 213 insertions(+)
+
+diff --git a/src/configure_Dialog.ui b/src/configure_Dialog.ui
+index 1c87966..b4eacc4 100644
+--- a/src/configure_Dialog.ui
++++ b/src/configure_Dialog.ui
+@@ -1075,6 +1075,80 @@
+                                 </spacer>
+                             </grid>
+                         </widget>
++                        <widget class="TQWidget">
++                            <property name="name">
++                                <cstring>networking</cstring>
++                            </property>
++                            <property name="backgroundMode">
++                                <enum>PaletteBackground</enum>
++                            </property>
++                            <attribute name="label">
++                                <string>Networking</string>
++                            </attribute>
++                            <grid>
++                                <property name="name">
++                                    <cstring>unnamed</cstring>
++                                </property>
++                                <widget class="TQComboBox" row="0" column="2">
++                                    <property name="name">
++                                        <cstring>cB_networkProfile</cstring>
++                                    </property>
++                                </widget>
++                                <widget class="TQLabel" row="0" column="0">
++                                    <property name="name">
++                                        <cstring>tL_networkProfile</cstring>
++                                    </property>
++                                    <property name="text">
++                                        <string>Network profile:</string>
++                                    </property>
++                                    <property name="buddy" stdset="0">
++                                        <cstring>cB_networkProfile</cstring>
++                                    </property>
++                                </widget>
++                                <spacer row="0" column="1">
++                                    <property name="name">
++                                        <cstring>spacer_net_h</cstring>
++                                    </property>
++                                    <property name="orientation">
++                                        <enum>Horizontal</enum>
++                                    </property>
++                                    <property name="sizeType">
++                                        <enum>MinimumExpanding</enum>
++                                    </property>
++                                    <property name="sizeHint">
++                                        <size>
++                                            <width>20</width>
++                                            <height>20</height>
++                                        </size>
++                                    </property>
++                                </spacer>
++                                <widget class="TQLabel" row="1" column="0" rowspan="1" colspan="3">
++                                    <property name="name">
++                                        <cstring>tL_networkError</cstring>
++                                    </property>
++                                    <property name="text">
++                                        <string></string>
++                                    </property>
++                                </widget>
++                                <spacer row="2" column="0">
++                                    <property name="name">
++                                        <cstring>spacer_net_v</cstring>
++                                    </property>
++                                    <property name="orientation">
++                                        <enum>Vertical</enum>
++                                    </property>
++                                    <property name="sizeType">
++                                        <enum>Expanding</enum>
++                                    </property>
++                                    <property name="sizeHint">
++                                        <size>
++                                            <width>20</width>
++                                            <height>150</height>
++                                        </size>
++                                    </property>
++                                </spacer>
++                            </grid>
++                        </widget>
+                     </widget>
+                     <widget class="TQLayoutWidget" row="0" column="0">
+                         <property name="name">
+diff --git a/src/configuredialog.cpp b/src/configuredialog.cpp
+index 300e85d..04e30e9 100644
+--- a/src/configuredialog.cpp
++++ b/src/configuredialog.cpp
+@@ -276,6 +276,19 @@ void ConfigureDialog::setIcons(){
+ 	tB_scheme->setItemIconSet( 4 ,SmallIcon("processor", TQIconSet::Automatic));
+ 	tB_scheme->setItemIconSet( 5 ,SmallIcon("misc", TQIconSet::Automatic));
+ 
++	// The Networking page belongs to netcfgd and is shown only when its
++	// `ncfg` tool is installed -- detection, no linking. It is the last
++	// scheme page (index 6), so removing it shifts no other page's icon.
++	if (Settings::ncfgAvailable()) {
++		tB_scheme->setItemIconSet( 6, SmallIcon("network", TQIconSet::Automatic));
++		cB_networkProfile->insertItem( i18n("(no profile switching)") );
++		cB_networkProfile->insertStringList( Settings::ncfgProfileList() );
++		connect( cB_networkProfile, TQ_SIGNAL(activated(int)),
++		         this, TQ_SLOT(scheme_valueChanged()) );
++	} else {
++		tB_scheme->removeItem( networking );
++	}
++
+ 	tB_general->setItemIconSet( 0, SmallIcon( "scheme_powersave", TQIconSet::Automatic));
+ 	tB_general->setItemIconSet( 1, SmallIcon( "button", TQIconSet::Automatic));
+ 	tB_general->setItemIconSet( 2, SmallIcon( "scheme_power", TQIconSet::Automatic));
+@@ -656,6 +669,19 @@ void ConfigureDialog::setConfigToDialog( int schemeID ){
+ 		}
+ 	}
+ 
++	if (Settings::ncfgAvailable()) {
++		if (tdeconfig->hasGroup(s_scheme)) tdeconfig->setGroup(s_scheme);
++		else tdeconfig->setGroup("default-scheme");
++		// Keyed by name, not index, so it survives the profile list changing;
++		// a name no longer present falls back to "(no profile switching)".
++		TQString np = tdeconfig->readEntry("NetworkProfile", "");
++		int idx = 0;
++		for (int k = 1; k < cB_networkProfile->count(); k++)
++			if (cB_networkProfile->text(k) == np) { idx = k; break; }
++		cB_networkProfile->setCurrentItem(idx);
++		tL_networkError->setText(settings->lastNetworkProfileError);
++	}
++
+ 	if (actions.count() < 1) {
+ 		cB_autoSuspend->setEnabled(false);
+ 		cB_autoSuspend->setChecked(false);
+@@ -846,6 +872,12 @@ void ConfigureDialog::saveSchemeSettings() {
+ 		}
+ 	}
+ 
++	if (Settings::ncfgAvailable()) {
++		tdeconfig->writeEntry("NetworkProfile",
++		    cB_networkProfile->currentItem() == 0 ? TQString("")
++		                                          : cB_networkProfile->currentText());
++	}
++
+ 	tdeconfig->sync();
+ 	scheme_changed = false;
+ 	if(!general_changed) buttonApply->setEnabled(false);
+diff --git a/src/settings.cpp b/src/settings.cpp
+index 3a7760c..9deafa2 100644
+--- a/src/settings.cpp
++++ b/src/settings.cpp
+@@ -30,6 +30,10 @@
+ 
+ // KDE Header
+ #include <tdelocale.h>
++#include <tdeglobal.h>
++#include <kstandarddirs.h>
++#include <kprocess.h>
++#include <cstdio>
+ 
+ // TQt Header
+ 
+@@ -84,6 +88,8 @@ bool Settings::load_scheme_settings(TQString schemeName){
+ 		}
+ 		currentScheme = schemeName;
+ 
++		networkProfile = tdeconfig->readEntry("NetworkProfile", "");
++
+ 		specSsSettings = tdeconfig->readBoolEntry("specSsSettings",false);
+ 		disableSs = tdeconfig->readBoolEntry("disableSs",false);
+ 		blankSs = tdeconfig->readBoolEntry("blankSs",false);
+@@ -399,3 +405,58 @@ void Settings::load_kde(){
+ 	delete _tdeconfig;
+ }
+ 
++/*!
++* Is the netcfgd command-line tool installed?
++*
++* Detection only, no linking: everything netcfgd here goes through `ncfg`.
++*/
++bool Settings::ncfgAvailable() {
++	return !TDEGlobal::dirs()->findExe("ncfg").isEmpty();
++}
++
++/*!
++* The netcfgd profile names, from `ncfg profile list`.
++*
++* Each line is a name followed by an annotation, e.g. "offline  (shipped)";
++* the name is the first field. No user input goes into this command, so
++* reading it through a captured pipe is safe -- and a static helper has
++* nowhere to hang the signal a TDEProcess capture would need.
++*/
++TQStringList Settings::ncfgProfileList() {
++	TQStringList names;
++	FILE *pipe = popen("ncfg profile list 2>/dev/null", "r");
++	if (!pipe) return names;
++	char line[512];
++	while (fgets(line, sizeof(line), pipe)) {
++		TQString name = TQString::fromLocal8Bit(line).simplifyWhiteSpace()
++		                                             .section(' ', 0, 0);
++		if (!name.isEmpty()) names.append(name);
++	}
++	pclose(pipe);
++	return names;
++}
++
++/*!
++* Switch netcfgd to a named profile.
++*
++* No shell: the name comes from configuration and must not be interpreted,
++* so TDEProcess passes it as an argument rather than a command line. The
++* switch reconfigures the network as soon as it is written; this is called
++* only from a scheme change the operator set up, and reports failure as text
++* rather than acting on the machine any further.
++*/
++bool Settings::ncfgProfileSet( const TQString &name, TQString &err ) {
++	TDEProcess proc;
++	proc << "ncfg" << "profile" << "set" << name;
++	if (!proc.start(TDEProcess::Block)) {
++		err = i18n("Could not run ncfg to switch the network profile.");
++		return false;
++	}
++	if (!proc.normalExit() || proc.exitStatus() != 0) {
++		err = i18n("Could not switch to network profile \"%1\". Run "
++		           "`ncfg profile set %1` in a terminal to see why.").arg(name);
++		return false;
++	}
++	err = TQString::null;
++	return true;
++}
+diff --git a/src/settings.h b/src/settings.h
+index 68509fe..bcbd5d1 100644
+--- a/src/settings.h
++++ b/src/settings.h
+@@ -279,6 +279,16 @@ public:
+ 
+ 	//! name of the scheme representing the current settings
+ 	TQString currentScheme;
++	//! netcfgd profile this scheme switches to on activation, "" for none
++	/*!
++	 * Per scheme. When set and the `ncfg` tool is present, activating the
++	 * scheme runs `ncfg profile set <this>`. netcfgd owns what the profile
++	 * does; this only names which one goes with which scheme.
++	 */
++	TQString networkProfile;
++	//! error text from the last network-profile switch, "" if it worked
++	/*! Runtime only. Shown in the configure dialog rather than in a popup. */
++	TQString lastNetworkProfileError;
+ 
+ 	// ---------- Screensaver/DPMS section ------------ //
+ 	//! if tdepowersave use own screensaver settings
+@@ -495,6 +505,14 @@ public:
+ 	void load_kde();
+ 	//! to load settings of a specific scheme
+ 	bool load_scheme_settings(TQString);
++	//! true if the netcfgd command-line tool `ncfg` is installed
++	static bool ncfgAvailable();
++	//! the netcfgd profile names from `ncfg profile list`; empty if none
++	static TQStringList ncfgProfileList();
++	//! switch netcfgd to the named profile via `ncfg profile set`
++	/*! \param err set to a message when it fails, cleared when it works
++	 *  \return true on success */
++	static bool ncfgProfileSet( const TQString &name, TQString &err );
+ 
+ private:
+ 
+diff --git a/src/tdepowersave.cpp b/src/tdepowersave.cpp
+index 352cf03..189e8d0 100644
+--- a/src/tdepowersave.cpp
++++ b/src/tdepowersave.cpp
+@@ -1492,6 +1492,7 @@ void tdepowersave::do_setActiveScheme( int i ){
+ 		}
+ 		settings->load_scheme_settings( settings->schemes[i]);
+ 		setSchemeSettings();
++		applyNetworkProfile();
+ 		notifySchemeSwitch();
+  	} else if (!settings->schemes[i]){
+ 		KPassivePopup::message( i18n("WARNING"),
+@@ -1855,6 +1856,31 @@ void tdepowersave::showErrorMessage( TQString msg ){
+  * e.g. the screensaver and dpms settings. Don't forget to call this function if
+  * a scheme is changed or if the settings changed.
+  */
++/*!
++ * Switch the netcfgd profile this scheme names, if any, through `ncfg`.
++ *
++ * Silent by design: schemes flip on every AC/battery transition, so a popup
++ * each time would be noise. A failure is remembered and shown as text in the
++ * configure dialog instead. Does nothing, and is not an error, when the
++ * scheme names no profile or `ncfg` is not installed.
++ */
++void tdepowersave::applyNetworkProfile(){
++	if (settings->networkProfile.isEmpty()) {
++		settings->lastNetworkProfileError = TQString::null;
++		return;
++	}
++	if (!Settings::ncfgAvailable())
++		return;
++
++	TQString err;
++	if (Settings::ncfgProfileSet(settings->networkProfile, err))
++		settings->lastNetworkProfileError = TQString::null;
++	else {
++		settings->lastNetworkProfileError = err;
++		kdWarning() << "tdepowersave: " << err << endl;
++	}
++}
++
+ void tdepowersave::setSchemeSettings(){
+ 	kdDebugFuncIn(trace);
+ 
+diff --git a/src/tdepowersave.h b/src/tdepowersave.h
+index 4b7c0c2..fb87006 100644
+--- a/src/tdepowersave.h
++++ b/src/tdepowersave.h
+@@ -288,6 +288,8 @@ private:
+ 	void redrawPixmap();
+ 	//! to set the screensaver settings
+ 	void setSchemeSettings();
++	//! push this scheme's netcfgd profile via `ncfg`, if it names one
++	void applyNetworkProfile();
+ 	//! to update the Tooltip of the kickerapplet
+ 	void updateTooltip();
+ 

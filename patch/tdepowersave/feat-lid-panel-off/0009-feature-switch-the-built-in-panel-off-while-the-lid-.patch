@@ -1,0 +1,659 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Mon, 7 Sep 2026 15:25:03 +0200
+Subject: [PATCH 09/12] feature: switch the built-in panel off while the lid is
+ shut
+
+Closing the lid turns off the backlight. It does not disable the RandR
+output, shrink the desktop or renumber the Xinerama heads, so a docked
+machine with the lid shut keeps a region of its desktop that is physically
+invisible and anything placed there is lost. Kicker is the visible symptom,
+being pinned to one head, but any window can land in that region.
+
+Switch the panel's output off while the lid is shut and put it back when it
+opens. Read the mode, position and primary flag through RandR, which
+reports them exactly, and leave the write to xrandr, which recomputes the
+framebuffer size; doing that here too would mean reimplementing arithmetic
+whose failure corrupts the screen rather than merely erring.
+
+The safety rests on one path and it is deliberately unconditional. Lid open
+restores the panel without consulting the setting, because a setting can be
+turned off in between and the cost of skipping it is a machine whose lid is
+open and whose screen is dark. Everything else is a refusal: never switch
+off unless another output is already being driven, which is counted rather
+than inferred from whether an external is connected, since connectedness
+leaves a race in which the external vanishes between the check and the act;
+verify afterwards and put the panel straight back if nothing survived; and
+decline when the panel's current mode cannot be read, since a panel that
+cannot be restored should not be switched off.
+
+Identify the panel by the kernel's connector type, and refuse when more
+than one is found: a dual-panel laptop has two and only one is behind the
+lid. Drivers that do not use those names match nothing, which is the
+correct outcome rather than a wrong guess.
+
+Do it before locking, so the locker draws once on the final geometry rather
+than resizing underneath itself.
+
+Restore at startup too, when the lid is open and a panel is found switched
+off, for the case where the process that switched it off did not survive to
+put it back. Nothing recorded that configuration then, so it comes back at
+its preferred mode.
+
+Default off. The setting beside it defaults on because its worst outcome is
+a machine that stays awake; this one's is a display nobody can see.
+---
+ src/screen.cpp       | 418 +++++++++++++++++++++++++++++++++++++++++++
+ src/screen.h         |  30 ++++
+ src/settings.cpp     |   9 +
+ src/settings.h       |   9 +
+ src/tdepowersave.cpp |  44 ++++-
+ 5 files changed, 507 insertions(+), 3 deletions(-)
+
+diff --git a/src/screen.cpp b/src/screen.cpp
+index 5a0dc7d..0ece281 100644
+--- a/src/screen.cpp
++++ b/src/screen.cpp
+@@ -56,6 +56,14 @@ screen::screen() {
+ 	gnomeScreensaverCheck = NULL;
+ 	xlock = NULL;
+ 
++	m_panelName = TQString::null;
++	m_panelWidth = 0;
++	m_panelHeight = 0;
++	m_panelX = 0;
++	m_panelY = 0;
++	m_panelPrimary = false;
++	m_panelDisabled = false;
++
+ 	got_XScreensaver = false;
+ 	checkDPMSStatus();
+ 	check_xscreensaver_timer_runs = false;
+@@ -524,6 +532,416 @@ bool screen::externalDisplayConnected() {
+ 	return found;
+ }
+ 
++/*!
++* Run xrandr and wait for it.
++*
++* Blocking is the point rather than an oversight: the caller checks the
++* resulting configuration immediately afterwards and undoes it if no display
++* survived, and that check is meaningless against a process still running.
++* xrandr returns promptly, and this is reached only from a lid event.
++*
++* \param args the arguments to pass
++* \return boolean with the result of the operation
++* \retval true if xrandr ran and exited zero
++* \retval false if it could not be started, or exited non-zero
++*/
++bool screen::runXrandr( const TQStringList &args ) {
++	TDEProcess proc;
++	proc << "xrandr" << args;
++
++	if (!proc.start(TDEProcess::Block)) {
++		kdWarning() << "tdepowersave: could not run xrandr; leaving the "
++			    << "display configuration alone." << endl;
++		return false;
++	}
++
++	if (!proc.normalExit() || proc.exitStatus() != 0) {
++		kdWarning() << "tdepowersave: xrandr failed" << endl;
++		return false;
++	}
++
++	return true;
++}
++
++/*!
++* Name the built-in panel's RandR output.
++*
++* The kernel names DRM connectors <type>-<index> from a fixed table, so eDP,
++* LVDS and DSI are the connector type rather than a guess, and the modesetting,
++* intel and amdgpu drivers pass those names through to RandR. Drivers that do
++* not -- the proprietary NVIDIA one spells them DFP-0 -- match nothing here,
++* and that is the correct outcome: an unrecognised panel means no action.
++*
++* Refuses when more than one internal output exists. A dual-panel laptop has
++* two eDPs and only one of them is behind the lid; nothing visible from here
++* says which, and switching off the wrong one is a fault the user watches
++* happen.
++*
++* \param name set to the output's name when exactly one is found
++* \return boolean with the result of the search
++* \retval true if exactly one internal output was identified
++* \retval false if none, or more than one, or RandR is unavailable
++*/
++bool screen::internalPanelOutput( TQString &name ) {
++	kdDebugFuncIn(trace);
++
++	Display *dpy = tqt_xdisplay();
++	int event_base, error_base;
++
++	if (!dpy || !XRRQueryExtension(dpy, &event_base, &error_base)) {
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	defaultHandler = XSetErrorHandler(badwindow_handler);
++
++	XRRScreenResources *res =
++		XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
++	if (!res) {
++		XSetErrorHandler(defaultHandler);
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	int found = 0;
++	TQString candidate;
++
++	for (int i = 0; i < res->noutput; i++) {
++		XRROutputInfo *out = XRRGetOutputInfo(dpy, res, res->outputs[i]);
++		if (!out) continue;
++
++		if (out->connection == RR_Connected && out->name) {
++			TQString n = TQString::fromLatin1(out->name);
++			if (n.startsWith("eDP", false) ||
++			    n.startsWith("LVDS", false) ||
++			    n.startsWith("DSI", false)) {
++				found++;
++				candidate = n;
++			}
++		}
++		XRRFreeOutputInfo(out);
++	}
++	XRRFreeScreenResources(res);
++	XSetErrorHandler(defaultHandler);
++
++	if (found != 1) {
++		if (found > 1) {
++			kdWarning() << "tdepowersave: " << found << " built-in panels "
++				    << "found; refusing to guess which is behind the lid."
++				    << endl;
++		}
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	name = candidate;
++	kdDebugFuncOut(trace);
++	return true;
++}
++
++/*!
++* Count the outputs that currently have a CRTC driving them.
++*
++* This is what decides whether the panel may be switched off, and it is
++* deliberately not the same question as whether an external display is
++* connected: a connector can be connected and dark, and asking about
++* connectedness leaves a race in which the external vanishes between the
++* check and the act.
++*
++* \return the number of outputs with a CRTC, or 0 if RandR is unavailable
++*/
++int screen::enabledOutputCount() {
++	kdDebugFuncIn(trace);
++
++	Display *dpy = tqt_xdisplay();
++	int event_base, error_base;
++
++	if (!dpy || !XRRQueryExtension(dpy, &event_base, &error_base)) {
++		kdDebugFuncOut(trace);
++		return 0;
++	}
++
++	defaultHandler = XSetErrorHandler(badwindow_handler);
++
++	XRRScreenResources *res =
++		XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
++	if (!res) {
++		XSetErrorHandler(defaultHandler);
++		kdDebugFuncOut(trace);
++		return 0;
++	}
++
++	int enabled = 0;
++	for (int i = 0; i < res->noutput; i++) {
++		XRROutputInfo *out = XRRGetOutputInfo(dpy, res, res->outputs[i]);
++		if (!out) continue;
++		if (out->crtc != None) enabled++;
++		XRRFreeOutputInfo(out);
++	}
++	XRRFreeScreenResources(res);
++	XSetErrorHandler(defaultHandler);
++
++	kdDebugFuncOut(trace);
++	return enabled;
++}
++
++/*!
++* Is a built-in panel connected but not being driven?
++*
++* \return boolean with the result of the check
++* \retval true if exactly one internal output exists and has no CRTC
++* \retval false otherwise, including when RandR is unavailable
++*/
++bool screen::internalPanelIsOff() {
++	TQString name;
++	if (!internalPanelOutput(name)) return false;
++
++	Display *dpy = tqt_xdisplay();
++	defaultHandler = XSetErrorHandler(badwindow_handler);
++
++	XRRScreenResources *res =
++		XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
++	if (!res) {
++		XSetErrorHandler(defaultHandler);
++		return false;
++	}
++
++	bool off = false;
++	for (int i = 0; i < res->noutput; i++) {
++		XRROutputInfo *out = XRRGetOutputInfo(dpy, res, res->outputs[i]);
++		if (!out) continue;
++		if (out->name && name == TQString::fromLatin1(out->name)) {
++			off = (out->crtc == None);
++		}
++		XRRFreeOutputInfo(out);
++	}
++	XRRFreeScreenResources(res);
++	XSetErrorHandler(defaultHandler);
++
++	return off;
++}
++
++/*!
++* Bring back a panel that was switched off by a process which is no longer
++* running.
++*
++* Nothing here recorded that configuration, so the panel comes back at its
++* preferred mode rather than exactly as it was. That is the right trade: the
++* alternative to an approximate restoration is none at all, and the case this
++* exists for is a machine whose lid is open and whose screen is dark.
++*
++* The caller gates this on the setting, so a panel somebody switched off
++* deliberately is left alone unless they asked for this behaviour.
++*
++* \return boolean with the result of the operation
++* \retval true if a panel was brought back
++* \retval false if there was nothing to do
++*/
++bool screen::healInternalPanel() {
++	kdDebugFuncIn(trace);
++
++	TQString name;
++	if (!internalPanelOutput(name) || !internalPanelIsOff()) {
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	kdWarning() << "tdepowersave: " << name << " was left switched off; "
++		    << "bringing it back at its preferred mode." << endl;
++	if (!runXrandr(TQStringList() << "--output" << name << "--auto")) {
++		kdError() << "tdepowersave: could not bring " << name << " back. "
++			  << "Recover with: xrandr --output " << name << " --auto"
++			  << endl;
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	m_panelDisabled = false;
++	kdDebugFuncOut(trace);
++	return true;
++}
++
++/*!
++* Record the built-in panel's configuration and switch its output off.
++*
++* Reading is done through RandR, which reports the mode, position and primary
++* flag exactly; writing is left to xrandr, which recomputes the framebuffer
++* size. Doing the write here as well would mean reimplementing that
++* arithmetic, and getting it wrong corrupts the screen rather than merely
++* failing.
++*
++* Refuses unless another output is already being driven, so the last one can
++* never be switched off, and checks again afterwards: if nothing survived, the
++* panel is put straight back. That is the difference between a bug and a
++* machine that displays nothing.
++*
++* \return boolean with the result of the operation
++* \retval true if the panel was switched off
++* \retval false if it was refused, or failed and was rolled back
++*/
++bool screen::disableInternalPanel() {
++	kdDebugFuncIn(trace);
++
++	if (m_panelDisabled) {
++		kdDebugFuncOut(trace);
++		return true;
++	}
++
++	TQString name;
++	if (!internalPanelOutput(name)) {
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	if (enabledOutputCount() < 2) {
++		kdDebug() << "tdepowersave: " << name << " is the only display in "
++			  << "use; not switching it off." << endl;
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	/* Record what it is now, so restoring puts back this and not a guess. */
++	Display *dpy = tqt_xdisplay();
++	defaultHandler = XSetErrorHandler(badwindow_handler);
++
++	XRRScreenResources *res =
++		XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
++	if (!res) {
++		XSetErrorHandler(defaultHandler);
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	RROutput primary = XRRGetOutputPrimary(dpy, DefaultRootWindow(dpy));
++	bool recorded = false;
++
++	for (int i = 0; i < res->noutput && !recorded; i++) {
++		XRROutputInfo *out = XRRGetOutputInfo(dpy, res, res->outputs[i]);
++		if (!out) continue;
++
++		if (out->name && name == TQString::fromLatin1(out->name) &&
++		    out->crtc != None) {
++			XRRCrtcInfo *crtc = XRRGetCrtcInfo(dpy, res, out->crtc);
++			if (crtc) {
++				m_panelX = crtc->x;
++				m_panelY = crtc->y;
++				for (int m = 0; m < res->nmode; m++) {
++					if (res->modes[m].id == crtc->mode) {
++						m_panelWidth = res->modes[m].width;
++						m_panelHeight = res->modes[m].height;
++						recorded = true;
++						break;
++					}
++				}
++				XRRFreeCrtcInfo(crtc);
++			}
++			m_panelPrimary = (res->outputs[i] == primary);
++		}
++		XRRFreeOutputInfo(out);
++	}
++	XRRFreeScreenResources(res);
++	XSetErrorHandler(defaultHandler);
++
++	if (!recorded) {
++		kdWarning() << "tdepowersave: could not read " << name << "'s current "
++			    << "mode; not switching it off, since it could not be put "
++			    << "back." << endl;
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	m_panelName = name;
++	if (!runXrandr(TQStringList() << "--output" << name << "--off")) {
++		/*
++		 * xrandr could not be run, or refused. Nothing has changed, and the
++		 * panel must not be recorded as switched off: doing so would have
++		 * the lid-open path reconfigure a panel nothing ever touched.
++		 */
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	/* Verify. If nothing is being driven now, undo it immediately. */
++	if (enabledOutputCount() < 1) {
++		kdWarning() << "tdepowersave: switching off " << name << " left no "
++			    << "display in use; putting it back." << endl;
++		if (!runXrandr(TQStringList() << "--output" << name
++			  << "--mode" << TQString("%1x%2").arg(m_panelWidth)
++						          .arg(m_panelHeight)
++			  << "--pos" << TQString("%1x%2").arg(m_panelX)
++							 .arg(m_panelY))) {
++			kdError() << "tdepowersave: could not put " << name << " back "
++				  << "after switching it off left nothing displaying. "
++				  << "Recover with: xrandr --output " << name
++				  << " --auto" << endl;
++		}
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	/*
++	 * xrandr exiting zero is not by itself evidence that it did anything,
++	 * so confirm the panel actually went dark before recording it as off.
++	 */
++	if (!internalPanelIsOff()) {
++		kdWarning() << "tdepowersave: xrandr reported success but " << name
++			    << " is still being driven; not recording it as switched "
++			    << "off." << endl;
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	m_panelDisabled = true;
++	kdDebug() << "tdepowersave: switched off " << name << endl;
++	kdDebugFuncOut(trace);
++	return true;
++}
++
++/*!
++* Put the built-in panel back exactly as it was recorded.
++*
++* Called unconditionally on lid open, and at startup when the lid is open and
++* a panel is found switched off. It does not consult whether this process is
++* the one that switched it off, because the case that matters is the one where
++* the process that did so is no longer running.
++*
++* \return boolean with the result of the operation
++* \retval true if a panel was restored
++* \retval false if there was nothing to do
++*/
++bool screen::restoreInternalPanel() {
++	kdDebugFuncIn(trace);
++
++	if (!m_panelDisabled || m_panelName.isEmpty()) {
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	TQStringList args;
++	args << "--output" << m_panelName
++	     << "--mode" << TQString("%1x%2").arg(m_panelWidth).arg(m_panelHeight)
++	     << "--pos"  << TQString("%1x%2").arg(m_panelX).arg(m_panelY);
++	if (m_panelPrimary) args << "--primary";
++
++	if (!runXrandr(args)) {
++		/*
++		 * Leave m_panelDisabled set. The panel is still off, and saying
++		 * otherwise would stop the next lid-open and the startup check from
++		 * trying again, which are the only things that will.
++		 */
++		kdError() << "tdepowersave: could not restore " << m_panelName
++			  << ". Recover with: xrandr --output " << m_panelName
++			  << " --auto" << endl;
++		kdDebugFuncOut(trace);
++		return false;
++	}
++	m_panelDisabled = false;
++
++	kdDebug() << "tdepowersave: restored " << m_panelName << endl;
++	kdDebugFuncOut(trace);
++	return true;
++}
++
+ /*!
+ * Use this function to lock the screen. This function use automatically the right
+ * method for KDE or GNOME.
+diff --git a/src/screen.h b/src/screen.h
+index cc7ab7e..d2ef9f6 100644
+--- a/src/screen.h
++++ b/src/screen.h
+@@ -27,6 +27,7 @@
+ 
+ // TQt Header
+ #include <tqstring.h>
++#include <tqstringlist.h>
+ #include <tqwidget.h>
+ #include <tqtimer.h>
+ #include <tqevent.h>
+@@ -93,6 +94,21 @@ private:
+ 	//! TQTimer - interval
+ 	/*! This is the interval to poll the Xscreensaver. The value is 58 sec */
+ 	static const int xScreenSaver_timer_interval = 58000;
++	//! run xrandr synchronously and report whether it succeeded
++	bool runXrandr( const TQStringList &args );
++
++	//! saved configuration of the built-in panel while it is switched off
++	/*! Recorded through RandR before the panel is disabled, so that
++	* restoring puts back the mode, position and primary flag it actually
++	* had rather than whatever --auto would choose. */
++	TQString m_panelName;
++	int m_panelWidth;
++	int m_panelHeight;
++	int m_panelX;
++	int m_panelY;
++	bool m_panelPrimary;
++	bool m_panelDisabled;
++
+ 	//! TQTimer to check/ping the Xscreensaver
+ 	/*! This is the TQTimer to ping the Xscreensaver. The ping-interval is defined 
+ 	* through \ref xScreenSaver_timer_interval . */	
+@@ -160,6 +176,20 @@ public:
+ 	bool setScreenSaver( bool );
+ 	//! true if a display other than the built-in panel is connected
+ 	bool externalDisplayConnected();
++	//! name the built-in panel's output, if exactly one can be identified
++	bool internalPanelOutput( TQString &name );
++	//! how many outputs currently have a CRTC driving them
++	int enabledOutputCount();
++	//! remember the built-in panel's configuration and switch it off
++	bool disableInternalPanel();
++	//! put the built-in panel back exactly as it was
++	bool restoreInternalPanel();
++	//! true if a built-in panel is connected but has no CRTC
++	bool internalPanelIsOff();
++	//! bring a panel left switched off by a dead process back on
++	bool healInternalPanel();
++	//! true if this switched the panel off and has not put it back
++	bool internalPanelDisabled() const { return m_panelDisabled; }
+ 	
+ 	//! for check the status of the screensaver
+ 	int checkScreenSaverStatus();
+diff --git a/src/settings.cpp b/src/settings.cpp
+index 9deafa2..4c960fc 100644
+--- a/src/settings.cpp
++++ b/src/settings.cpp
+@@ -266,6 +266,15 @@ bool Settings::load_general_settings(){
+ 			tdeconfig->readBoolEntry("lockOnLidCloseWhenDocked",false);
+ 		performLidActionWhenDocked =
+ 			tdeconfig->readBoolEntry("performLidActionWhenDocked",false);
++		/*
++		 * Also default false, but for a different reason than the two
++		 * above: those decline to act, and their worst outcome is a machine
++		 * that stays awake or unlocked; this one acts, and its worst outcome
++		 * is a display nobody can see. A default that can do the second is
++		 * judged by its worst day.
++		 */
++		switchOffPanelOnLidClose =
++			tdeconfig->readBoolEntry("switchOffPanelOnLidClose",false);
+ 		autostart = tdeconfig->readBoolEntry("Autostart",false);
+ 		autostartNeverAsk = tdeconfig->readBoolEntry("AutostartNeverAsk",false);
+ 		psMsgAsPassivePopup = tdeconfig->readBoolEntry("psMsgAsPassivePopup",false);
+diff --git a/src/settings.h b/src/settings.h
+index bcbd5d1..1fc17b2 100644
+--- a/src/settings.h
++++ b/src/settings.h
+@@ -194,6 +194,15 @@ public:
+ 	 * \li false: do not act while docked (default)
+ 	 */
+ 	bool performLidActionWhenDocked;
++	//! if the built-in panel's output should be switched off on lid close
++	/*!
++	 * This boolean tells if the built-in panel's RandR output should be
++	 * disabled while the lid is shut and another display is in use, so that
++	 * the desktop does not keep a region nobody can see.
++	 * \li true:  switch the panel off, and back on when the lid opens
++	 * \li false: leave the output alone
++	 */
++	bool switchOffPanelOnLidClose;
+ 	//! if tdepowersave starts on login
+ 	/*!
+ 	 * This boolean tells if tdepowersave should be start automatically on userlogin.
+diff --git a/src/tdepowersave.cpp b/src/tdepowersave.cpp
+index df2488c..4510ecb 100644
+--- a/src/tdepowersave.cpp
++++ b/src/tdepowersave.cpp
+@@ -113,6 +113,18 @@ tdepowersave::tdepowersave( bool force_acpi_check, bool trace_func ) : KSystemTr
+ 
+ 	// connect to events
+ 	connect(hwinfo, TQ_SIGNAL(lidclosetStatus(bool)), this, TQ_SLOT(handleLidEvent(bool)));
++
++	/*
++	 * If a previous run switched the panel off and did not survive to put it
++	 * back, the machine is sitting with its lid open and nothing displaying.
++	 * Nothing recorded that configuration, so this restores the preferred
++	 * mode rather than exactly what was there -- which is the right trade
++	 * against not restoring it at all. Gated on the setting, so a panel
++	 * somebody switched off deliberately is left alone.
++	 */
++	if (settings->switchOffPanelOnLidClose && !hwinfo->getLidclose()) {
++		display->healInternalPanel();
++	}
+ 	connect(hwinfo, TQ_SIGNAL(powerButtonPressed()), this, TQ_SLOT (handlePowerButtonEvent()));
+ 	connect(hwinfo, TQ_SIGNAL(sleepButtonPressed()), this, TQ_SLOT (handleSuspendButtonEvent()));
+ 	connect(hwinfo, TQ_SIGNAL(s2diskButtonPressed()), this, TQ_SLOT (handleS2DiskButtonEvent()));
+@@ -1335,9 +1347,8 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 		settings->load_general_settings();
+ 
+ 		// Nothing automatic happens while power management is inhibited:
+-		// no lock, no action (and no panel switch where that feature is
+-		// present). Lid-open handling in the else branch is untouched, so
+-		// reopening still restores normally.
++		// no panel switch, no lock, no action. Lid-open handling in the else
++		// branch is untouched, so reopening still restores normally.
+ 		if (m_inhibited) {
+ 			kdDebug() << "power management inhibited; lid close ignored"
+ 				  << endl;
+@@ -1345,6 +1356,25 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 			return;
+ 		}
+ 
++		/*
++		 * Switch the built-in panel off before anything else, and in
++		 * particular before locking. The locker then draws once on the final
++		 * geometry instead of resizing underneath itself.
++		 *
++		 * display->disableInternalPanel() refuses unless another output is
++		 * already being driven, and puts the panel back itself if switching
++		 * it off leaves nothing displaying.
++		 */
++		if (settings->switchOffPanelOnLidClose) {
++			if (hwinfo->currentSessionIsActive()) {
++				display->disableInternalPanel();
++			}
++			else {
++				kdWarning() << "Session is not active, don't touch the "
++					    << "display configuration on lidclose!" << endl;
++			}
++		}
++
+ 		// handle the lid close
+ 		//
+ 		// Docked -- an external display is connected -- is a policy of its
+@@ -1398,6 +1428,14 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 		if(!settings->disableNotifications)
+ 			KNotifyClient::event( this->winId(), "lid_closed_event", i18n("The Lid was closed."));
+ 	} else {
++		/*
++		 * Put the panel back first, and without consulting any setting. This
++		 * is the one path the whole arrangement's safety rests on: if it is
++		 * ever conditional, a machine can be left with a lid open and nothing
++		 * displaying, and the setting could have been turned off in between.
++		 */
++		display->restoreInternalPanel();
++
+ 		if(settings->forceDpmsOffOnLidClose) {
+ 			// reset the scheme settings to avoid problems related to call xset on lidclose
+ 			setSchemeSettings();

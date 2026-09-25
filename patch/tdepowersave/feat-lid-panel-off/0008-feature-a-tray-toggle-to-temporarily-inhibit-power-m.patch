@@ -1,0 +1,177 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Fri, 18 Sep 2026 11:38:09 +0200
+Subject: [PATCH 08/12] feature: a tray toggle to temporarily inhibit power
+ management
+
+An easy, deliberate "leave the machine alone": a checkable tray item, "Do
+Not Suspend or Lock the Screen", that while on stops inactivity from
+suspending or dimming and makes closing the lid do nothing. It gates at
+the action points -- do_autosuspendWarn, do_downDimm and the lid-close
+branch of handleLidEvent -- rather than tearing down timers, so the paths
+that would act simply return, and nothing else has to know.
+
+Manual suspend and hibernate from this same menu and the hardware power
+buttons still work: the inhibit is about the automatic responses, not a
+lock on the machine. A critical battery is deliberately left to act, since
+going flat is worse than staying awake. A passive popup confirms each
+toggle, which is fine here because it is a deliberate click, unlike the
+per-scheme switches that fire on every AC/battery change.
+
+Runtime only, so "temporary" means until it is switched off or the session
+ends -- nothing is written to the configuration, which is the semantics
+"temporarily" asks for.
+
+Like the netcfgd profile page, this is its own concern rather than the
+lid's and reads onto its own upstream pull request; it shares the lid
+branches only locally.
+---
+ src/tdepowersave.cpp | 66 ++++++++++++++++++++++++++++++++++++++++++++
+ src/tdepowersave.h   |  8 ++++++
+ 2 files changed, 74 insertions(+)
+
+diff --git a/src/tdepowersave.cpp b/src/tdepowersave.cpp
+index 455828e..df2488c 100644
+--- a/src/tdepowersave.cpp
++++ b/src/tdepowersave.cpp
+@@ -138,6 +138,7 @@ tdepowersave::tdepowersave( bool force_acpi_check, bool trace_func ) : KSystemTr
+ 	config_dialog_shown = false;
+ 	suspend_dialog_shown = false;
+ 	detailedIsShown = false;
++	m_inhibited = false;
+ 	icon_set_colored = false;
+ 	icon_BG_is_colored = false;
+ 
+@@ -227,6 +228,11 @@ void tdepowersave::initMenu() {
+ 	// menu entry for the autosuspend disable checkbox, disabled by default, only
+ 	// displayed if autosuspend for the current scheme is activated
+ 	AUTOSUSPEND_SEPARATOR_MENU_ID = contextMenu()->insertSeparator();
++	INHIBIT_MENU_ID = this->contextMenu()->insertItem(
++				i18n("Do Not Suspend or Lock the Screen"),
++				this, TQ_SLOT(do_toggleInhibit()));
++	this->contextMenu()->setItemChecked(INHIBIT_MENU_ID, false);
++
+ 	AUTOSUSPEND_MENU_ID = this->contextMenu()->insertItem( i18n("Disable Actions on Inactivity"),
+ 							       this,TQ_SLOT(do_setAutosuspend()));
+ 	this->contextMenu()->setItemVisible(AUTOSUSPEND_SEPARATOR_MENU_ID, false);
+@@ -949,6 +955,13 @@ bool tdepowersave::do_standby(){
+ void tdepowersave::do_autosuspendWarn() {
+ 	kdDebugFuncIn(trace);
+ 
++	if (m_inhibited) {
++		kdDebug() << "power management inhibited; not suspending on inactivity"
++			  << endl;
++		kdDebugFuncOut(trace);
++		return;
++	}
++
+ 	// Verify that the desired suspend action is allowed before displaying the dialog
+ 	SuspendStates suspend = hwinfo->getSuspendSupport();
+ 	bool allowed = false;
+@@ -1075,6 +1088,11 @@ bool tdepowersave::do_autosuspend(bool cancel) {
+ void tdepowersave::do_downDimm() {
+ 	kdDebugFuncIn(trace);
+ 
++	if (m_inhibited) {
++		kdDebugFuncOut(trace);
++		return;
++	}
++
+ 	if (hwinfo->supportBrightness()) {
+ 		if (!m_autoDimmTimer->isActive()) {
+ 			int dimmToLevel = (int)round(hwinfo->getMaxBrightnessLevel() * settings->autoDimmTo / 100.0);
+@@ -1316,6 +1334,17 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 		// could be shure, that the settings are actuall
+ 		settings->load_general_settings();
+ 
++		// Nothing automatic happens while power management is inhibited:
++		// no lock, no action (and no panel switch where that feature is
++		// present). Lid-open handling in the else branch is untouched, so
++		// reopening still restores normally.
++		if (m_inhibited) {
++			kdDebug() << "power management inhibited; lid close ignored"
++				  << endl;
++			kdDebugFuncOut(trace);
++			return;
++		}
++
+ 		// handle the lid close
+ 		//
+ 		// Docked -- an external display is connected -- is a policy of its
+@@ -2898,6 +2927,43 @@ bool tdepowersave::do_brightnessDown(int percentageStep) {
+  * \param disable boolean which tell if the autosuspend should be stopped (true)
+  *		   or started (false).
+  */
++/*!
++ * Toggle a temporary inhibit of all automatic power management.
++ *
++ * An easy, deliberate "leave the machine alone": while it is on, inactivity
++ * does not suspend or dim, and closing the lid does nothing. Manual actions
++ * from this menu and the power buttons still work -- the inhibit is about the
++ * automatic responses, not a lock on the machine -- and a critical battery is
++ * left to act, since going flat is worse than staying awake.
++ *
++ * Runtime only, on purpose: "temporary" means until it is turned off or the
++ * session ends, so nothing is written to the configuration.
++ */
++void tdepowersave::do_toggleInhibit(){
++	kdDebugFuncIn(trace);
++
++	m_inhibited = !m_inhibited;
++	contextMenu()->setItemChecked(INHIBIT_MENU_ID, m_inhibited);
++
++	if (!settings->disableNotifications) {
++		if (m_inhibited)
++			KPassivePopup::message( i18n("Power Management Inhibited"),
++				i18n("The screen will not dim or lock and the system "
++				     "will not suspend on its own until you switch this "
++				     "off."),
++				SmallIcon("messagebox_info", 20), this,
++				i18n("Info").utf8(), 5000);
++		else
++			KPassivePopup::message( i18n("Power Management Resumed"),
++				i18n("Automatic suspend, dimming and lid actions are "
++				     "back to normal."),
++				SmallIcon("messagebox_info", 20), this,
++				i18n("Info").utf8(), 5000);
++	}
++
++	kdDebugFuncOut(trace);
++}
++
+ void tdepowersave::disableAutosuspend( bool disable ){
+ 	kdDebugFuncIn(trace);
+ 
+diff --git a/src/tdepowersave.h b/src/tdepowersave.h
+index 374067c..7aa109e 100644
+--- a/src/tdepowersave.h
++++ b/src/tdepowersave.h
+@@ -108,6 +108,10 @@ private:
+ 	* \li false: if not
+ 	*/
+ 	bool detailedIsShown;
++	//! true while the user has inhibited automatic power management
++	/*! Runtime only, so "temporary" means until toggled off or the next
++	 *  login. Gates the inactivity, dimming and lid-close responses. */
++	bool m_inhibited;
+ 	//! represent the state of the configure dialog
+ 	/*!
+ 	* This boolean represent information about the configure dialog. Use this to inform
+@@ -200,6 +204,8 @@ private:
+ 	//! a submenu ID
+ 	/*! contains the ID of the cpufreq sub menu*/
+ 	int CPUFREQ_MENU_ID;
++	//! menu id of the "do not manage power" toggle
++	int INHIBIT_MENU_ID;
+ 	//! a menu seperator ID
+ 	/*! contains the ID of the separator between cpufreq- and scheme-submenu*/
+ 	int SCHEME_SEPARATOR_MENU_ID;
+@@ -331,6 +337,8 @@ private slots:
+ 	void do_setIconBG();
+ 	//! to set the autosuspend on/off over the menu
+ 	void do_setAutosuspend();
++	//! toggle the temporary inhibit of all automatic power management
++	void do_toggleInhibit();
+ 	//! sets the CPU Freq policy via the TDE hardware library
+ 	void do_setSpeedPolicy( int );
+ 	//! called if there are problems with starting yast module

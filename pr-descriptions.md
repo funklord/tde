@@ -184,6 +184,92 @@ that calls it are not exercised, and want a physical external display.
 
 ---
 
+## PR 4 -- tdepowersave: `feat/lid-panel-off`
+
+**Title:** `feature: switch the internal display off on lid close, backlight only optional`
+
+Closing the lid leaves the built-in panel lit, and turning it off is
+tangled together with locking and suspending rather than being its own
+decision. Two modes make it visible: with power management inhibited, or
+with an external display connected, the lid-close handler returned early and
+did nothing, so the internal panel -- which nobody can see under a shut lid
+-- stayed on. Upstream's `forceDpmsOffOnLidClose` did blank it, but only in
+the undocked lock path, and through `xset dpms force off`, which is global
+and so cannot be used while docked without blanking the external display
+too.
+
+Powering the internal panel off becomes its own step, run first and
+unconditionally on lid close while the session is active, before the inhibit
+gate and independent of lock, suspend and the docked policy.
+`powerSaveInternalDisplay()` picks the mechanism and records what it did so
+the lid-open path undoes exactly that:
+
+- **docked** (an external display is driving): the internal output is
+  disabled entirely, light and drive both, and the external is left
+  untouched. `disableInternalPanel()` refuses if that would leave nothing
+  displaying, and lid-open restores it.
+- **alone** (the internal panel is the only display): DPMS off -- a power
+  state rather than a configuration change, so no transient zero-display
+  state, and it restores on the next input event. Global DPMS is safe here
+  precisely because there is no external display for it to blank.
+- **backlight only**: the backlight is dimmed to nothing and no display
+  configuration or power state is touched at all.
+
+### The compatibility option
+
+`lidDisplayLightOnly`, a checkbox in the lid-close button configuration
+("On lid close, switch off only the backlight, not the display"), selects
+that third mechanism. It exists for desktops and software that break when
+the display configuration changes, or that cannot survive a transient
+zero-display state: ticked, a lid close only dims the backlight and never
+touches the display; unticked, the display itself is switched off, which is
+the default. It is shown only when the machine has a lid, exactly as the
+lock-mode combo and the docked-action option are.
+
+`forceDpmsOffOnLidClose` becomes the single master enable for all of this,
+default on. Its name is now historical -- it once forced only DPMS -- and is
+kept so existing configurations and an existing `=false` opt-out still read.
+
+### What it deliberately does not do
+
+- **Run under XWayland**, where outputs are virtual and disabling them is
+  meaningless.
+- **Handle multiple internal panels.** A dual-panel laptop has two eDPs and
+  only one is behind the lid; the panel-off helper refuses rather than guess.
+
+### Testing
+
+Built as a Debian package and installed on a live TDE 14.1.6 desktop, with
+the built binary confirmed to match the branch (the new config key present,
+the retired one absent). On the single internal display this machine has:
+
+    inhibit + lid close     internal panel goes dark (DPMS), machine awake
+    backlight-only + lid     backlight dims, display left configured
+
+Both observed on the running desktop; the checkbox renders and enables Apply
+like its siblings.
+
+**Not tested on hardware**: the docked path -- `disableInternalPanel()` on
+lid close, external display staying lit -- reaches the RandR output disable
+and wants a real second display, as does the restore across a docked lid
+cycle.
+
+### Note on the branch
+
+This branch sits on `feat/lid-docked` (PR 3) and reuses its docked
+detection and RandR helpers, so it should be reviewed after it. The four
+commits here -- the panel-off mechanism, the display-off split, the
+backlight-only checkbox and its signal fix -- are the whole of this PR. The
+underlying `feat/lid-docked` has itself grown since PR 3 was written (the
+docked policy is now configurable as two independent settings rather than
+one `ignoreLidCloseWhenDocked` flag, plus the form-factor/`hasLid` fix and
+the lock-mode combo); PR 3's description wants refreshing before that branch
+goes up, and other independent features on it -- the inhibit toggle, the
+per-scheme netcfgd profile -- deserve their own PRs rather than riding this
+stack.
+
+---
+
 ## A review comment for PR 47, same file
 
 Worth raising on `feat/idle-inhibition` while in `screen.cpp`. It adds

@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Thu, 17 Sep 2026 23:47:48 +0200
+Subject: [PATCH 04/12] show the lid options when a lid exists, not when the
+ box says laptop
+
+The configure dialog hid "Lock screen on lid close" -- and, with the
+previous change, the two docked checkboxes -- whenever
+hwinfo->isLaptop() was false. isLaptop() is the TDE hardware layer's
+form factor, and it comes back Desktop on at least one real laptop whose
+DMI chassis type the layer does not map (a Latitude reporting type 10,
+Notebook). The result: a machine that locks on lid close, and whose lid
+settings are invisible in the dialog, so the behaviour cannot be seen or
+changed.
+
+The predicate was wrong. What decides whether the lid settings apply is
+whether the machine has a lid, not what the hardware layer calls the
+chassis -- and tdepowersave already knows, because it finds the ACPI lid
+switch device and connects to its events. Record that as lid_present and
+expose hasLid(), and gate the lid options on it.
+
+This fixes the visibility of the existing "Lock screen on lid close"
+checkbox on the same hardware, not only the new ones -- it was hidden
+there all along, which is how the machine came to lock on lid close with
+no visible setting for it.
+---
+ src/configuredialog.cpp |  7 +++++--
+ src/hardware.cpp        | 12 ++++++++++++
+ src/hardware.h          | 10 ++++++++++
+ 3 files changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/src/configuredialog.cpp b/src/configuredialog.cpp
+index b617d32..af76578 100644
+--- a/src/configuredialog.cpp
++++ b/src/configuredialog.cpp
+@@ -121,8 +121,11 @@ ConfigureDialog::ConfigureDialog( TDEConfig *_config, HardwareInfo *_hwinfo, Set
+ 	tL_valueBrightness->setAlignment(TQt::AlignCenter);
+ 	tL_valueBrightness->setFocusPolicy(TQWidget::NoFocus);
+ 
+-	// hide Lid items if this is not a laptop
+-	if (!hwinfo->isLaptop()) {
++	// hide the lid options only when there is no lid switch. Keying this on
++	// isLaptop() hid them on hardware the TDE layer misreports as a desktop
++	// -- a real laptop whose form factor comes back wrong -- even though the
++	// lid, and these settings, plainly apply.
++	if (!hwinfo->hasLid()) {
+ 		cB_lockLid->hide();
+ 		cB_lockLidDocked->hide();
+ 		cB_actionLidDocked->hide();
+diff --git a/src/hardware.cpp b/src/hardware.cpp
+index 6c29de3..cc93f8b 100644
+--- a/src/hardware.cpp
++++ b/src/hardware.cpp
+@@ -53,6 +53,7 @@ HardwareInfo::HardwareInfo()
+     // init members
+     acadapter = true;
+     lidclose = false;
++    lid_present = false;
+     laptop = false;
+     brightness = false;
+     brightness_in_hardware = false;
+@@ -124,6 +125,7 @@ bool HardwareInfo::reinitHardwareInfos()
+     /* first cleanup */
+     acadapter = true;
+     lidclose = false;
++    lid_present = false;
+     laptop = false;
+     brightness = false;
+     has_APM = false;
+@@ -718,6 +720,7 @@ bool HardwareInfo::intialiseHWInfo()
+             }
+             connect(edevice, TQ_SIGNAL(switchChanged()), this, TQ_SLOT(checkLidcloseState()));
+             checkLidcloseState();
++            lid_present = true;
+         }
+     }
+ 
+@@ -1474,6 +1477,15 @@ bool HardwareInfo::getLidclose() const
+     return lidclose;
+ }
+ 
++/*!
++* \return true if this machine has a lid switch, whatever form factor the
++* hardware layer reports.
++*/
++bool HardwareInfo::hasLid() const
++{
++    return lid_present;
++}
++
+ /*!
+  * The function return the maximal available brightness level
+  * \return Integer with max level or -1 if not supported
+diff --git a/src/hardware.h b/src/hardware.h
+index 4d64314..8b00a64 100644
+--- a/src/hardware.h
++++ b/src/hardware.h
+@@ -200,6 +200,14 @@ private:
+ 	* \li false: 	else
+ 	*/
+ 	bool lidclose;
++	//! whether a lid switch exists on this machine
++	/*!
++	 * True when an ACPI lid switch device is present, independent of the
++	 * form factor the hardware layer reports. A machine can have a lid and
++	 * still be misreported as a desktop, and the lid-related settings should
++	 * follow the lid, not the label.
++	 */
++	bool lid_present;
+ 	//! if the machine support APM
+ 	/*!
+ 	* This boolean represent information if the machine support APM or not.
+@@ -439,6 +447,8 @@ public:
+ 	bool getAcAdapter() const;
+ 	//! get the state of the lid button
+ 	bool getLidclose() const;
++	//! true if this machine has a lid switch
++	bool hasLid() const;
+ 	//! check if the machine is a latop
+ 	bool isLaptop() const;
+ 	//! check if there is a connection to TDE hardware library

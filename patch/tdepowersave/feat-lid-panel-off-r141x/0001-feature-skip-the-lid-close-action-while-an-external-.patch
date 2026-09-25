@@ -1,0 +1,230 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Sun, 6 Sep 2026 19:23:12 +0200
+Subject: [PATCH 01/12] feature: skip the lid-close action while an external
+ display is on
+
+Closing the lid of a docked machine suspends it, even though the session
+remains perfectly usable on the external screen. logind would not do this:
+its default is HandleLidSwitchDocked=ignore. tdepowersave never reaches
+that default, because it takes a block inhibitor on handle-lid-switch and
+so owns the event outright, and it has no notion of being docked.
+
+Give it one. screen::externalDisplayConnected() asks RandR for the outputs
+it already knows about and reports whether any connector other than the
+built-in panel is connected, identifying the panel by name as every driver
+spells it: eDP, LVDS or DSI.
+
+It deliberately calls XRRGetScreenResourcesCurrent rather than
+XRRGetScreenResources. The latter forces a DDC probe of every connector,
+which is slow and is the last kind of traffic that should be generated
+from a lid event.
+
+The RandR calls run under the file's own error handler. This is invoked
+while the display is changing, which is precisely when an output can be
+removed between listing the resources and asking about one of them: the
+list is a snapshot, and an id the server has since dropped is an error
+rather than a null return.
+
+Only the action is suppressed. Locking is a separate setting and keeps its
+own behaviour, which matches how logind splits the two: closing the lid of
+a docked machine should not power it down, but it may still be a reason to
+lock the screen.
+
+The new ignoreLidCloseWhenDocked defaults to true, so the behaviour
+matches the platform default that the inhibitor currently overrides.
+Anyone who wants the old unconditional action back sets it to false.
+---
+ ConfigureChecks.cmake |  7 +++++
+ src/CMakeLists.txt    |  1 +
+ src/screen.cpp        | 69 +++++++++++++++++++++++++++++++++++++++++++
+ src/screen.h          |  2 ++
+ src/settings.cpp      |  8 +++++
+ src/settings.h        |  8 +++++
+ src/tdepowersave.cpp  |  7 ++++-
+ 7 files changed, 101 insertions(+), 1 deletion(-)
+
+diff --git a/ConfigureChecks.cmake b/ConfigureChecks.cmake
+index c8b495f..0cd869a 100644
+--- a/ConfigureChecks.cmake
++++ b/ConfigureChecks.cmake
+@@ -43,6 +43,13 @@ if( NOT XTST_FOUND )
+ endif()
+ 
+ 
++# check for Xrandr
++pkg_search_module( XRANDR xrandr )
++if( NOT XRANDR_FOUND )
++  tde_message_fatal( "Xrandr are required, but not found on your system" )
++endif( )
++
++
+ # check for xscrnsaver
+ pkg_search_module( XSCRNSAVER xscrnsaver )
+ if( NOT XSCRNSAVER_FOUND )
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 0d3ff90..74b579f 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -62,4 +62,5 @@ tde_add_tdeinit_executable( tdepowersave AUTOMOC
+   LINK
+     ${DBUS_TQT_LIBRARIES} tdeio-shared ${TDEHW_LIBRARIES}
+     ${XEXT_LIBRARIES} ${XTST_LIBRARIES} ${XSCRNSAVER_LIBRARIES}
++    ${XRANDR_LIBRARIES}
+ )
+diff --git a/src/screen.cpp b/src/screen.cpp
+index da6f8dc..aaf3fc3 100644
+--- a/src/screen.cpp
++++ b/src/screen.cpp
+@@ -39,6 +39,7 @@
+ extern "C" {
+ 	#include <X11/Xproto.h>
+ 	#include <X11/extensions/dpms.h>
++	#include <X11/extensions/Xrandr.h>
+ 	#include <X11/extensions/XTest.h>
+ }
+ 
+@@ -455,6 +456,74 @@ bool screen::setDPMSTimeouts( int standby_timeout, int suspend_timeout, int off_
+ 	return true;
+ }
+ 
++/*!
++* Check whether any display other than the built-in panel is connected.
++*
++* This asks RandR for the outputs it already knows about rather than
++* re-probing them: XRRGetScreenResources forces a DDC probe of every
++* connector, which is slow and is exactly the kind of traffic that should
++* not be generated from a lid event.
++*
++* An output is taken to be the built-in panel by name, which is the
++* convention every driver follows: eDP, LVDS and DSI.
++*
++* \return boolean with the result of the check
++* \retval true if at least one external display is connected
++* \retval false if only the panel is connected, or RandR is unavailable
++*/
++bool screen::externalDisplayConnected() {
++	kdDebugFuncIn(trace);
++
++	Display *dpy = tqt_xdisplay();
++	int event_base, error_base;
++
++	if (!dpy || !XRRQueryExtension(dpy, &event_base, &error_base)) {
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	/*
++	 * This is called while the display is changing, which is the one time
++	 * an output can be removed between the two calls below: the resource
++	 * list is a snapshot, and XRRGetOutputInfo on an id the server has
++	 * since dropped is an error rather than a null return. Catch it the
++	 * way the rest of this file does instead of letting it reach the
++	 * default handler.
++	 */
++	defaultHandler = XSetErrorHandler(badwindow_handler);
++
++	XRRScreenResources *res =
++		XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
++	if (!res) {
++		XSetErrorHandler(defaultHandler);
++		kdDebugFuncOut(trace);
++		return false;
++	}
++
++	bool found = false;
++	for (int i = 0; i < res->noutput && !found; i++) {
++		XRROutputInfo *out = XRRGetOutputInfo(dpy, res, res->outputs[i]);
++		if (!out) continue;
++
++		if (out->connection == RR_Connected && out->name) {
++			TQString name = TQString::fromLatin1(out->name);
++			if (!name.startsWith("eDP", false) &&
++			    !name.startsWith("LVDS", false) &&
++			    !name.startsWith("DSI", false)) {
++				kdDebug() << "external display connected: "
++					  << name << endl;
++				found = true;
++			}
++		}
++		XRRFreeOutputInfo(out);
++	}
++	XRRFreeScreenResources(res);
++	XSetErrorHandler(defaultHandler);
++
++	kdDebugFuncOut(trace);
++	return found;
++}
++
+ /*!
+ * Use this function to lock the screen. This function use automatically the right
+ * method for KDE or GNOME.
+diff --git a/src/screen.h b/src/screen.h
+index f64b610..281b6af 100644
+--- a/src/screen.h
++++ b/src/screen.h
+@@ -158,6 +158,8 @@ public:
+ 	bool setDPMSTimeouts( int, int, int );
+ 	//! to activate/disable the Screensaver
+ 	bool setScreenSaver( bool );
++	//! true if a display other than the built-in panel is connected
++	bool externalDisplayConnected();
+ 	
+ 	//! for check the status of the screensaver
+ 	int checkScreenSaverStatus();
+diff --git a/src/settings.cpp b/src/settings.cpp
+index c1a04d0..9d2e10b 100644
+--- a/src/settings.cpp
++++ b/src/settings.cpp
+@@ -247,6 +247,14 @@ bool Settings::load_general_settings(){
+ 
+ 		lockOnSuspend = tdeconfig->readBoolEntry("lockOnSuspend",true);
+ 		lockOnLidClose = tdeconfig->readBoolEntry("lockOnLidClose",true);
++		/*
++		 * Default true to match logind, whose own default is
++		 * HandleLidSwitchDocked=ignore. tdepowersave takes a block
++		 * inhibitor on the lid switch, so without this the platform
++		 * default is overridden and never reached.
++		 */
++		ignoreLidCloseWhenDocked =
++			tdeconfig->readBoolEntry("ignoreLidCloseWhenDocked",true);
+ 		autostart = tdeconfig->readBoolEntry("Autostart",false);
+ 		autostartNeverAsk = tdeconfig->readBoolEntry("AutostartNeverAsk",false);
+ 		psMsgAsPassivePopup = tdeconfig->readBoolEntry("psMsgAsPassivePopup",false);
+diff --git a/src/settings.h b/src/settings.h
+index c860f17..46a9115 100644
+--- a/src/settings.h
++++ b/src/settings.h
+@@ -177,6 +177,14 @@ public:
+ 	 * \li false: if not lock the screen
+ 	 */
+ 	bool lockOnLidClose;
++	//! if the lid-close action should be skipped while docked
++	/*!
++	 * This boolean tells if the 'Lid close' ACTION should be suppressed
++	 * while an external display is connected. It does not affect locking.
++	 * \li true:  don't run the action while docked
++	 * \li false: run it regardless
++	 */
++	bool ignoreLidCloseWhenDocked;
+ 	//! if tdepowersave starts on login
+ 	/*!
+ 	 * This boolean tells if tdepowersave should be start automatically on userlogin.
+diff --git a/src/tdepowersave.cpp b/src/tdepowersave.cpp
+index 7400e93..8d47425 100644
+--- a/src/tdepowersave.cpp
++++ b/src/tdepowersave.cpp
+@@ -1334,7 +1334,12 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 			}
+ 		} else {
+ 			// handle lock action
+-			if (hwinfo->currentSessionIsActive()) {
++			if (settings->ignoreLidCloseWhenDocked &&
++			    display->externalDisplayConnected()) {
++				kdDebug() << "External display connected, don't react on "
++					  << "lidclose event with a action call. The machine "
++					  << "is docked and the session stays usable." << endl;
++			} else if (hwinfo->currentSessionIsActive()) {
+ 				handleActionCall(settings->lidcloseAction, settings->lidcloseActionValue);
+ 			} else {
+ 				kdWarning() << "Session is not active, don't react on lidclose "

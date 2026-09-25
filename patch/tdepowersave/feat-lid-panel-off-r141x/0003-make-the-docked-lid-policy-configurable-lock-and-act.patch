@@ -1,0 +1,270 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Thu, 17 Sep 2026 18:10:42 +0200
+Subject: [PATCH 03/12] make the docked lid policy configurable, lock and
+ action separately
+
+The previous fix hoisted a single ignoreLidCloseWhenDocked flag to cover
+the whole lid-close response, which cured the bug -- a docked machine no
+longer locked when it should stay usable -- but coupled two decisions that
+tdepowersave keeps separate everywhere else, and left the flag with no UI.
+
+Replace it with two settings in [General], each defaulting off:
+
+  lockOnLidCloseWhenDocked   lock the screen on lid close while docked
+  performLidActionWhenDocked run the configured lid-close action while docked
+
+Both off is the previous default -- an external display connected means
+the session stays usable with the lid shut, neither locking nor acting --
+so behaviour is unchanged until the operator asks otherwise. Setting them
+independently expresses the cases the single flag could not: docked and
+still lock for security, or docked and still suspend, without forcing both
+or neither.
+
+Docked stays defined as externalDisplayConnected(): a state of the machine,
+not a preference, so it is detected rather than configured. The model is
+deliberately two plain toggles rather than a mirror of logind's
+docked/external-power/normal policy triplet: tdepowersave runs on systems
+with no logind, and coupling the design to a systemd interface would not
+travel.
+
+Both toggles are exposed in the configure dialog beside "Lock screen on
+lid close", hidden together with it on non-laptops, and the docked lock
+counts toward enabling the lock-method combo. Loaded, saved and wired to
+general_valueChanged() like the controls around them.
+---
+ src/configure_Dialog.ui | 30 +++++++++++++++++++++++++++++-
+ src/configuredialog.cpp | 17 +++++++++++++----
+ src/settings.cpp        | 17 +++++++++++------
+ src/settings.h          | 21 +++++++++++++++------
+ src/tdepowersave.cpp    | 41 +++++++++++++++++++++++++++--------------
+ 5 files changed, 95 insertions(+), 31 deletions(-)
+
+diff --git a/src/configure_Dialog.ui b/src/configure_Dialog.ui
+index b1c0416..47da624 100644
+--- a/src/configure_Dialog.ui
++++ b/src/configure_Dialog.ui
+@@ -1873,7 +1873,23 @@
+                                         <string>Lock screen on lid close</string>
+                                     </property>
+                                 </widget>
+-                                <spacer row="3" column="1">
++                                <widget class="TQCheckBox" row="3" column="0" rowspan="1" colspan="3">
++                                    <property name="name">
++                                        <cstring>cB_lockLidDocked</cstring>
++                                    </property>
++                                    <property name="text">
++                                        <string>Lock screen on lid close, even when docked</string>
++                                    </property>
++                                </widget>
++                                <widget class="TQCheckBox" row="4" column="0" rowspan="1" colspan="3">
++                                    <property name="name">
++                                        <cstring>cB_actionLidDocked</cstring>
++                                    </property>
++                                    <property name="text">
++                                        <string>Perform the lid-close action, even when docked</string>
++                                    </property>
++                                </widget>
++                                <spacer row="5" column="1">
+                                     <property name="name">
+                                         <cstring>spacer79</cstring>
+                                     </property>
+@@ -2377,6 +2393,18 @@
+         <receiver>configure_Dialog</receiver>
+         <slot>general_valueChanged()</slot>
+     </connection>
++    <connection>
++        <sender>cB_lockLidDocked</sender>
++        <signal>toggled(bool)</signal>
++        <receiver>configure_Dialog</receiver>
++        <slot>general_valueChanged()</slot>
++    </connection>
++    <connection>
++        <sender>cB_actionLidDocked</sender>
++        <signal>toggled(bool)</signal>
++        <receiver>configure_Dialog</receiver>
++        <slot>general_valueChanged()</slot>
++    </connection>
+     <connection>
+         <sender>pB_configNotify</sender>
+         <signal>released()</signal>
+diff --git a/src/configuredialog.cpp b/src/configuredialog.cpp
+index 5e933c6..b617d32 100644
+--- a/src/configuredialog.cpp
++++ b/src/configuredialog.cpp
+@@ -121,9 +121,12 @@ ConfigureDialog::ConfigureDialog( TDEConfig *_config, HardwareInfo *_hwinfo, Set
+ 	tL_valueBrightness->setAlignment(TQt::AlignCenter);
+ 	tL_valueBrightness->setFocusPolicy(TQWidget::NoFocus);
+ 
+-	// hide Lid item if this is not a laptop
+-	if (!hwinfo->isLaptop())
++	// hide Lid items if this is not a laptop
++	if (!hwinfo->isLaptop()) {
+ 		cB_lockLid->hide();
++		cB_lockLidDocked->hide();
++		cB_actionLidDocked->hide();
++	}
+ 	// hide CPU Freq page if not supported
+ 	if (!hwinfo->supportCPUFreq()) {
+ 		tB_scheme->setItemLabel( 4, tB_scheme->itemLabel(4) + i18n(" - not supported"));
+@@ -301,6 +304,8 @@ void ConfigureDialog::setTooltips(){
+ 	TQToolTip::add(cB_disablePM, i18n("This disables DPMS support."));
+ 	TQToolTip::add(cB_lockSuspend, i18n("If selected, the screen is locked on suspend or standby."));
+ 	TQToolTip::add(cB_lockLid, i18n("If selected, the screen is locked if the lid close event is triggered."));
++	TQToolTip::add(cB_lockLidDocked, i18n("If selected, the screen is locked on lid close even while an external display is connected (docked)."));
++	TQToolTip::add(cB_actionLidDocked, i18n("If selected, the configured lid-close action still runs while an external display is connected (docked)."));
+ 
+ 	TQToolTip::add(cB_autoSuspend, i18n("Check this box to enable or disable automatic suspension of "
+ 					   "the computer."));
+@@ -680,6 +685,8 @@ void ConfigureDialog::setGeneralSettings() {
+ 
+ 	cB_lockSuspend->setChecked(tdeconfig->readBoolEntry("lockOnSuspend",false));
+ 	cB_lockLid->setChecked(tdeconfig->readBoolEntry("lockOnLidClose",false));
++	cB_lockLidDocked->setChecked(tdeconfig->readBoolEntry("lockOnLidCloseWhenDocked",false));
++	cB_actionLidDocked->setChecked(tdeconfig->readBoolEntry("performLidActionWhenDocked",false));
+ 	cB_autostart->setChecked(tdeconfig->readBoolEntry("Autostart",false));
+ 	cB_autostart_neverAsk->setChecked(tdeconfig->readBoolEntry("AutostartNeverAsk",false));
+ 
+@@ -699,7 +706,7 @@ void ConfigureDialog::setGeneralSettings() {
+ 	else if (gnome_session && (lockmethod == "gnomescreensaver")) comboB_lock->setCurrentItem(4);
+ 	else comboB_lock->setCurrentItem(0);
+ 
+-	if(cB_lockSuspend->isOn() || cB_lockLid->isOn() ) {
++	if(cB_lockSuspend->isOn() || cB_lockLid->isOn() || cB_lockLidDocked->isOn() ) {
+ 		tL_lockWith->setEnabled(true);
+ 		comboB_lock->setEnabled(true);
+ 	}
+@@ -850,6 +857,8 @@ void ConfigureDialog::saveGeneralSettings() {
+ 
+ 	tdeconfig->writeEntry("lockOnSuspend",cB_lockSuspend->isOn());
+ 	tdeconfig->writeEntry("lockOnLidClose",cB_lockLid->isOn());
++	tdeconfig->writeEntry("lockOnLidCloseWhenDocked",cB_lockLidDocked->isOn());
++	tdeconfig->writeEntry("performLidActionWhenDocked",cB_actionLidDocked->isOn());
+ 	tdeconfig->writeEntry("Autostart",cB_autostart->isOn());
+ 	tdeconfig->writeEntry("AutostartNeverAsk",cB_autostart_neverAsk->isOn());
+ 
+@@ -914,7 +923,7 @@ void ConfigureDialog::general_valueChanged(){
+ 		general_changed = true;
+ 		buttonApply->setEnabled(true);
+ 		// enable/disable the comboB_lock and tL_lockWith
+-		if(cB_lockSuspend->isOn() || cB_lockLid->isOn() ) {
++		if(cB_lockSuspend->isOn() || cB_lockLid->isOn() || cB_lockLidDocked->isOn() ) {
+ 			tL_lockWith->setEnabled(true);
+ 			comboB_lock->setEnabled(true);
+ 		}
+diff --git a/src/settings.cpp b/src/settings.cpp
+index 9d2e10b..3a7760c 100644
+--- a/src/settings.cpp
++++ b/src/settings.cpp
+@@ -248,13 +248,18 @@ bool Settings::load_general_settings(){
+ 		lockOnSuspend = tdeconfig->readBoolEntry("lockOnSuspend",true);
+ 		lockOnLidClose = tdeconfig->readBoolEntry("lockOnLidClose",true);
+ 		/*
+-		 * Default true to match logind, whose own default is
+-		 * HandleLidSwitchDocked=ignore. tdepowersave takes a block
+-		 * inhibitor on the lid switch, so without this the platform
+-		 * default is overridden and never reached.
++		 * Docked lid-close policy, split so the lock and the action are set
++		 * independently rather than coupled into one flag. Both default off:
++		 * an external display connected means the machine stays usable with
++		 * the lid shut, neither locking nor acting -- also logind's
++		 * HandleLidSwitchDocked=ignore default. tdepowersave holds a block
++		 * inhibitor on the lid switch, so it owns this policy outright and
++		 * the platform default is never reached.
+ 		 */
+-		ignoreLidCloseWhenDocked =
+-			tdeconfig->readBoolEntry("ignoreLidCloseWhenDocked",true);
++		lockOnLidCloseWhenDocked =
++			tdeconfig->readBoolEntry("lockOnLidCloseWhenDocked",false);
++		performLidActionWhenDocked =
++			tdeconfig->readBoolEntry("performLidActionWhenDocked",false);
+ 		autostart = tdeconfig->readBoolEntry("Autostart",false);
+ 		autostartNeverAsk = tdeconfig->readBoolEntry("AutostartNeverAsk",false);
+ 		psMsgAsPassivePopup = tdeconfig->readBoolEntry("psMsgAsPassivePopup",false);
+diff --git a/src/settings.h b/src/settings.h
+index 46a9115..68509fe 100644
+--- a/src/settings.h
++++ b/src/settings.h
+@@ -177,14 +177,23 @@ public:
+ 	 * \li false: if not lock the screen
+ 	 */
+ 	bool lockOnLidClose;
+-	//! if the lid-close action should be skipped while docked
++	//! whether to lock the screen on lid close while docked
+ 	/*!
+-	 * This boolean tells if the 'Lid close' ACTION should be suppressed
+-	 * while an external display is connected. It does not affect locking.
+-	 * \li true:  don't run the action while docked
+-	 * \li false: run it regardless
++	 * Independent of \ref lockOnLidClose, which governs the undocked case.
++	 * "Docked" means an external display is connected.
++	 * \li true:  lock even while docked
++	 * \li false: do not lock while docked (default)
+ 	 */
+-	bool ignoreLidCloseWhenDocked;
++	bool lockOnLidCloseWhenDocked;
++	//! whether to run the lid-close action while docked
++	/*!
++	 * Independent of the undocked action. "Docked" means an external
++	 * display is connected. Off by default, as logind's own docked default
++	 * is not to act.
++	 * \li true:  run the configured lid-close action while docked
++	 * \li false: do not act while docked (default)
++	 */
++	bool performLidActionWhenDocked;
+ 	//! if tdepowersave starts on login
+ 	/*!
+ 	 * This boolean tells if tdepowersave should be start automatically on userlogin.
+diff --git a/src/tdepowersave.cpp b/src/tdepowersave.cpp
+index 4ef1170..352cf03 100644
+--- a/src/tdepowersave.cpp
++++ b/src/tdepowersave.cpp
+@@ -1316,21 +1316,34 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 		// could be shure, that the settings are actuall
+ 		settings->load_general_settings();
+ 
+-		// handle screen lock
++		// handle the lid close
+ 		//
+-		// The docked guard governs the whole lid-close response, not only the
+-		// action branch. It used to sit inside the else below, so a machine
+-		// with no configured lid-close action still ran the lock and the
+-		// DPMS-off on every lid close while docked -- the exact behaviour
+-		// ignoreLidCloseWhenDocked exists to prevent, whose own promise is
+-		// that the session stays usable. A lock is the least usable outcome
+-		// there is, so it is the one the guard most needs to cover.
+-		if (settings->ignoreLidCloseWhenDocked &&
+-		    display->externalDisplayConnected()) {
+-			kdDebug() << "External display connected; ignoring the lid close "
+-				  << "entirely -- no lock, no DPMS-off, no action. The "
+-				  << "machine is docked and the session stays usable."
+-				  << endl;
++		// Docked -- an external display is connected -- is a policy of its
++		// own, and its two halves are configured independently: whether to
++		// lock (lockOnLidCloseWhenDocked) and whether to run the configured
++		// action (performLidActionWhenDocked). Both default off, so a docked
++		// machine stays usable with the lid shut unless asked otherwise. The
++		// single coupled flag this replaces suppressed the action but not the
++		// lock, so a docked machine with no action still locked on every close.
++		if (display->externalDisplayConnected()) {
++			if (settings->lockOnLidCloseWhenDocked) {
++				if (!display->lockScreen( settings->lockmethod )) {
++					KPassivePopup::message( i18n("WARNING"),
++								i18n("Could not lock the screen. There may "
++								     "be a problem with the selected \nlock "
++								     "method or something else."),
++								SmallIcon("messagebox_warning", 20), this,
++								i18n("Warning").utf8(), 10000);
++				}
++				if (settings->forceDpmsOffOnLidClose) {
++					display->forceDPMSOff();
++				}
++			}
++			if (settings->performLidActionWhenDocked &&
++			    settings->lidcloseAction >= 0 &&
++			    hwinfo->currentSessionIsActive()) {
++				handleActionCall(settings->lidcloseAction, settings->lidcloseActionValue);
++			}
+ 		} else if (settings->lidcloseAction < 0) {
+ 			if(settings->lockOnLidClose) {
+ 				if(!display->lockScreen( settings->lockmethod )) {

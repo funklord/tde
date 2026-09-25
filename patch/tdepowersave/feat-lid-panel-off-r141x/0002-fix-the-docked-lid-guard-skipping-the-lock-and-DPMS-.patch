@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Thu, 17 Sep 2026 17:31:22 +0200
+Subject: [PATCH 02/12] fix the docked lid guard skipping the lock and DPMS-off
+ paths
+
+ignoreLidCloseWhenDocked was checked only inside the branch that handles a
+configured lid-close action, so a machine with no such action -- the
+common case, where closing the lid just locks -- ran the lock and the
+DPMS-off on every lid close even while docked. The setting's whole purpose
+is that a docked machine stays usable with the lid shut, and a lock is the
+least usable outcome there is, so the one exit the guard did not cover was
+the one that mattered most.
+
+Hoist the guard so it governs the entire lid-close response: docked and
+configured to ignore means no lock, no DPMS-off and no action. The two
+inner branches below it are unchanged apart from losing the duplicated
+docked test that now sits above them.
+---
+ src/tdepowersave.cpp | 32 +++++++++++++++++++-------------
+ 1 file changed, 19 insertions(+), 13 deletions(-)
+
+diff --git a/src/tdepowersave.cpp b/src/tdepowersave.cpp
+index 8d47425..4ef1170 100644
+--- a/src/tdepowersave.cpp
++++ b/src/tdepowersave.cpp
+@@ -1317,7 +1317,21 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 		settings->load_general_settings();
+ 
+ 		// handle screen lock
+-		if (settings->lidcloseAction < 0) {
++		//
++		// The docked guard governs the whole lid-close response, not only the
++		// action branch. It used to sit inside the else below, so a machine
++		// with no configured lid-close action still ran the lock and the
++		// DPMS-off on every lid close while docked -- the exact behaviour
++		// ignoreLidCloseWhenDocked exists to prevent, whose own promise is
++		// that the session stays usable. A lock is the least usable outcome
++		// there is, so it is the one the guard most needs to cover.
++		if (settings->ignoreLidCloseWhenDocked &&
++		    display->externalDisplayConnected()) {
++			kdDebug() << "External display connected; ignoring the lid close "
++				  << "entirely -- no lock, no DPMS-off, no action. The "
++				  << "machine is docked and the session stays usable."
++				  << endl;
++		} else if (settings->lidcloseAction < 0) {
+ 			if(settings->lockOnLidClose) {
+ 				if(!display->lockScreen( settings->lockmethod )) {
+ 					KPassivePopup::message( i18n("WARNING"),
+@@ -1332,19 +1346,11 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 			if(settings->forceDpmsOffOnLidClose) {
+ 				display->forceDPMSOff();
+ 			}
++		} else if (hwinfo->currentSessionIsActive()) {
++			handleActionCall(settings->lidcloseAction, settings->lidcloseActionValue);
+ 		} else {
+-			// handle lock action
+-			if (settings->ignoreLidCloseWhenDocked &&
+-			    display->externalDisplayConnected()) {
+-				kdDebug() << "External display connected, don't react on "
+-					  << "lidclose event with a action call. The machine "
+-					  << "is docked and the session stays usable." << endl;
+-			} else if (hwinfo->currentSessionIsActive()) {
+-				handleActionCall(settings->lidcloseAction, settings->lidcloseActionValue);
+-			} else {
+-				kdWarning() << "Session is not active, don't react on lidclose "
+-					    << "event with a action call (like e.g. Suspend)!" << endl;
+-			}
++			kdWarning() << "Session is not active, don't react on lidclose "
++				    << "event with a action call (like e.g. Suspend)!" << endl;
+ 		}
+ 
+ 		if(!settings->disableNotifications)

@@ -1,0 +1,254 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Fri, 18 Sep 2026 10:02:57 +0200
+Subject: [PATCH 06/12] present lock-on-lid as a three-state combo, and move
+ the lid button down
+
+Two dialog refinements the copyright holder asked for on seeing the
+settings in place.
+
+Lock on lid close was two checkboxes -- "Lock screen on lid close" and
+"... even when docked" -- which between them can express a fourth,
+meaningless combination: lock when docked but not otherwise. The states
+that make sense are three, so it is a combobox now: Do not lock / Lock,
+unless docked / Lock, even when docked. It still writes the same two
+booleans the daemon reads (lockOnLidClose and lockOnLidCloseWhenDocked),
+mapped so the nonsense state cannot be produced, and the lock-method combo
+enables on any value that locks.
+
+And the Lid close button moves to the bottom of the Button Events list,
+below Power, Suspend and Suspend-to-disk. It is a switch rather than a
+button and now sits next to the "Perform the lid-close action, even when
+docked" checkbox that qualifies it, which is where a tester looked for the
+relationship.
+
+Both verified by rendering the generated dialog on each page.
+---
+ src/configure_Dialog.ui | 61 +++++++++++++++++++++++------------------
+ src/configuredialog.cpp | 23 +++++++++-------
+ 2 files changed, 48 insertions(+), 36 deletions(-)
+
+diff --git a/src/configure_Dialog.ui b/src/configure_Dialog.ui
+index ec113e1..1c87966 100644
+--- a/src/configure_Dialog.ui
++++ b/src/configure_Dialog.ui
+@@ -1493,7 +1493,7 @@
+                                         <set>WordBreak|AlignTop</set>
+                                     </property>
+                                 </widget>
+-                                <widget class="TQLabel" row="4" column="0">
++                                <widget class="TQLabel" row="3" column="0">
+                                     <property name="name">
+                                         <cstring>textLabel3_4_4</cstring>
+                                     </property>
+@@ -1504,7 +1504,7 @@
+                                         <cstring>cB_S2DiskButton</cstring>
+                                     </property>
+                                 </widget>
+-                                <widget class="TQLabel" row="3" column="0">
++                                <widget class="TQLabel" row="2" column="0">
+                                     <property name="name">
+                                         <cstring>textLabel3_4_3</cstring>
+                                     </property>
+@@ -1515,7 +1515,7 @@
+                                         <cstring>cB_SuspendButton</cstring>
+                                     </property>
+                                 </widget>
+-                                <widget class="TQLabel" row="2" column="0">
++                                <widget class="TQLabel" row="4" column="0">
+                                     <property name="name">
+                                         <cstring>textLabel3_4_2</cstring>
+                                     </property>
+@@ -1554,7 +1554,7 @@
+                                         </size>
+                                     </property>
+                                 </spacer>
+-                                <spacer row="2" column="1">
++                                <spacer row="4" column="1">
+                                     <property name="name">
+                                         <cstring>spacer85_2</cstring>
+                                     </property>
+@@ -1571,7 +1571,7 @@
+                                         </size>
+                                     </property>
+                                 </spacer>
+-                                <spacer row="3" column="1">
++                                <spacer row="2" column="1">
+                                     <property name="name">
+                                         <cstring>spacer85_3</cstring>
+                                     </property>
+@@ -1588,7 +1588,7 @@
+                                         </size>
+                                     </property>
+                                 </spacer>
+-                                <spacer row="4" column="1">
++                                <spacer row="3" column="1">
+                                     <property name="name">
+                                         <cstring>spacer85_4</cstring>
+                                     </property>
+@@ -1605,7 +1605,7 @@
+                                         </size>
+                                     </property>
+                                 </spacer>
+-                                <widget class="TQComboBox" row="3" column="2">
++                                <widget class="TQComboBox" row="2" column="2">
+                                     <property name="name">
+                                         <cstring>cB_SuspendButton</cstring>
+                                     </property>
+@@ -1616,7 +1616,7 @@
+                                         </size>
+                                     </property>
+                                 </widget>
+-                                <widget class="TQComboBox" row="2" column="2">
++                                <widget class="TQComboBox" row="4" column="2">
+                                     <property name="name">
+                                         <cstring>cB_LidcloseButton</cstring>
+                                     </property>
+@@ -1638,7 +1638,7 @@
+                                         </size>
+                                     </property>
+                                 </widget>
+-                                <widget class="TQComboBox" row="4" column="2">
++                                <widget class="TQComboBox" row="3" column="2">
+                                     <property name="name">
+                                         <cstring>cB_S2DiskButton</cstring>
+                                     </property>
+@@ -1873,20 +1873,35 @@
+                                         <cstring>comboB_lock</cstring>
+                                     </property>
+                                 </widget>
+-                                <widget class="TQCheckBox" row="1" column="0" rowspan="1" colspan="3">
++                                <widget class="TQLabel" row="1" column="0">
+                                     <property name="name">
+-                                        <cstring>cB_lockLid</cstring>
++                                        <cstring>tL_lockLid</cstring>
+                                     </property>
+                                     <property name="text">
+-                                        <string>Lock screen on lid close</string>
++                                        <string>Lock screen on lid close:</string>
++                                    </property>
++                                    <property name="buddy" stdset="0">
++                                        <cstring>cB_lockLidMode</cstring>
+                                     </property>
+                                 </widget>
+-                                <widget class="TQCheckBox" row="3" column="0" rowspan="1" colspan="3">
++                                <widget class="TQComboBox" row="1" column="1">
++                                    <item>
++                                        <property name="text">
++                                            <string>Do not lock</string>
++                                        </property>
++                                    </item>
++                                    <item>
++                                        <property name="text">
++                                            <string>Lock, unless docked</string>
++                                        </property>
++                                    </item>
++                                    <item>
++                                        <property name="text">
++                                            <string>Lock, even when docked</string>
++                                        </property>
++                                    </item>
+                                     <property name="name">
+-                                        <cstring>cB_lockLidDocked</cstring>
+-                                    </property>
+-                                    <property name="text">
+-                                        <string>Lock screen on lid close, even when docked</string>
++                                        <cstring>cB_lockLidMode</cstring>
+                                     </property>
+                                 </widget>
+                                 <spacer row="5" column="1">
+@@ -2388,14 +2403,8 @@
+         <slot>general_valueChanged()</slot>
+     </connection>
+     <connection>
+-        <sender>cB_lockLid</sender>
+-        <signal>toggled(bool)</signal>
+-        <receiver>configure_Dialog</receiver>
+-        <slot>general_valueChanged()</slot>
+-    </connection>
+-    <connection>
+-        <sender>cB_lockLidDocked</sender>
+-        <signal>toggled(bool)</signal>
++        <sender>cB_lockLidMode</sender>
++        <signal>activated(int)</signal>
+         <receiver>configure_Dialog</receiver>
+         <slot>general_valueChanged()</slot>
+     </connection>
+@@ -2574,7 +2583,7 @@
+     <tabstop>cB_acScheme</tabstop>
+     <tabstop>cB_batteryScheme</tabstop>
+     <tabstop>cB_lockSuspend</tabstop>
+-    <tabstop>cB_lockLid</tabstop>
++    <tabstop>cB_lockLidMode</tabstop>
+     <tabstop>comboB_lock</tabstop>
+     <tabstop>pB_editAutosuspendGBlacklist</tabstop>
+     <tabstop>pB_configNotify</tabstop>
+diff --git a/src/configuredialog.cpp b/src/configuredialog.cpp
+index af76578..300e85d 100644
+--- a/src/configuredialog.cpp
++++ b/src/configuredialog.cpp
+@@ -126,8 +126,8 @@ ConfigureDialog::ConfigureDialog( TDEConfig *_config, HardwareInfo *_hwinfo, Set
+ 	// -- a real laptop whose form factor comes back wrong -- even though the
+ 	// lid, and these settings, plainly apply.
+ 	if (!hwinfo->hasLid()) {
+-		cB_lockLid->hide();
+-		cB_lockLidDocked->hide();
++		tL_lockLid->hide();
++		cB_lockLidMode->hide();
+ 		cB_actionLidDocked->hide();
+ 	}
+ 	// hide CPU Freq page if not supported
+@@ -306,8 +306,7 @@ void ConfigureDialog::setTooltips(){
+ 					  "overwritten while tdepowersave runs."));
+ 	TQToolTip::add(cB_disablePM, i18n("This disables DPMS support."));
+ 	TQToolTip::add(cB_lockSuspend, i18n("If selected, the screen is locked on suspend or standby."));
+-	TQToolTip::add(cB_lockLid, i18n("If selected, the screen is locked if the lid close event is triggered."));
+-	TQToolTip::add(cB_lockLidDocked, i18n("If selected, the screen is locked on lid close even while an external display is connected (docked)."));
++	TQToolTip::add(cB_lockLidMode, i18n("Whether the screen is locked when the lid is closed: never, only when the machine is not docked (no external display connected), or always."));
+ 	TQToolTip::add(cB_actionLidDocked, i18n("If selected, the configured lid-close action still runs while an external display is connected (docked)."));
+ 
+ 	TQToolTip::add(cB_autoSuspend, i18n("Check this box to enable or disable automatic suspension of "
+@@ -687,8 +686,12 @@ void ConfigureDialog::setGeneralSettings() {
+ 	tdeconfig->setGroup("General");
+ 
+ 	cB_lockSuspend->setChecked(tdeconfig->readBoolEntry("lockOnSuspend",false));
+-	cB_lockLid->setChecked(tdeconfig->readBoolEntry("lockOnLidClose",false));
+-	cB_lockLidDocked->setChecked(tdeconfig->readBoolEntry("lockOnLidCloseWhenDocked",false));
++	// One combo over two booleans, avoiding the nonsense fourth state (lock
++	// when docked but not otherwise): 0 do not lock, 1 lock unless docked,
++	// 2 lock even when docked.
++	bool lockLid = tdeconfig->readBoolEntry("lockOnLidClose",false);
++	bool lockLidDocked = tdeconfig->readBoolEntry("lockOnLidCloseWhenDocked",false);
++	cB_lockLidMode->setCurrentItem( !lockLid ? 0 : (lockLidDocked ? 2 : 1) );
+ 	cB_actionLidDocked->setChecked(tdeconfig->readBoolEntry("performLidActionWhenDocked",false));
+ 	cB_autostart->setChecked(tdeconfig->readBoolEntry("Autostart",false));
+ 	cB_autostart_neverAsk->setChecked(tdeconfig->readBoolEntry("AutostartNeverAsk",false));
+@@ -709,7 +712,7 @@ void ConfigureDialog::setGeneralSettings() {
+ 	else if (gnome_session && (lockmethod == "gnomescreensaver")) comboB_lock->setCurrentItem(4);
+ 	else comboB_lock->setCurrentItem(0);
+ 
+-	if(cB_lockSuspend->isOn() || cB_lockLid->isOn() || cB_lockLidDocked->isOn() ) {
++	if(cB_lockSuspend->isOn() || cB_lockLidMode->currentItem() >= 1 ) {
+ 		tL_lockWith->setEnabled(true);
+ 		comboB_lock->setEnabled(true);
+ 	}
+@@ -859,8 +862,8 @@ void ConfigureDialog::saveGeneralSettings() {
+ 	tdeconfig->setGroup("General");
+ 
+ 	tdeconfig->writeEntry("lockOnSuspend",cB_lockSuspend->isOn());
+-	tdeconfig->writeEntry("lockOnLidClose",cB_lockLid->isOn());
+-	tdeconfig->writeEntry("lockOnLidCloseWhenDocked",cB_lockLidDocked->isOn());
++	tdeconfig->writeEntry("lockOnLidClose", cB_lockLidMode->currentItem() >= 1);
++	tdeconfig->writeEntry("lockOnLidCloseWhenDocked", cB_lockLidMode->currentItem() == 2);
+ 	tdeconfig->writeEntry("performLidActionWhenDocked",cB_actionLidDocked->isOn());
+ 	tdeconfig->writeEntry("Autostart",cB_autostart->isOn());
+ 	tdeconfig->writeEntry("AutostartNeverAsk",cB_autostart_neverAsk->isOn());
+@@ -926,7 +929,7 @@ void ConfigureDialog::general_valueChanged(){
+ 		general_changed = true;
+ 		buttonApply->setEnabled(true);
+ 		// enable/disable the comboB_lock and tL_lockWith
+-		if(cB_lockSuspend->isOn() || cB_lockLid->isOn() || cB_lockLidDocked->isOn() ) {
++		if(cB_lockSuspend->isOn() || cB_lockLidMode->currentItem() >= 1 ) {
+ 			tL_lockWith->setEnabled(true);
+ 			comboB_lock->setEnabled(true);
+ 		}

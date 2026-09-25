@@ -1,0 +1,375 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Tue, 22 Sep 2026 11:32:17 +0200
+Subject: [PATCH 10/12] feature: power the internal display off on lid close,
+ split from lock
+
+Turning the display off, locking, and suspending are three separate
+concerns on lid close, and they were tangled. The inhibit gate and the
+docked-ignore path both returned early doing nothing, so under a shut lid
+the internal panel stayed lit in exactly the two modes a user reaches for
+when stowing the machine running. forceDpmsOffOnLidClose did blank the
+display, but only in the undocked lock path, and through xset dpms force
+off -- which is global, so it could never be used docked without blanking
+the external too.
+
+Power the internal panel off as its own step, run first and
+unconditionally on lid close while the session is active, before the
+inhibit gate and independent of lock, suspend and the docked policy. A
+shut lid is never being looked at, so this is the one lid-close response
+that is always wanted. powerSaveInternalDisplay() picks the mechanism and
+records what it did so the open path undoes exactly that:
+
+  - docked (an external display is driving): disable the internal output
+    entirely, light and drive both, external untouched;
+  - alone (the internal panel is the only display): force DPMS off, a
+    power state rather than a configuration change, so no zero-display
+    moment, restoring on the next input event -- global DPMS is safe here
+    because there is no external to blank;
+  - lidDisplayLightOnly: dim the backlight to nothing and change no
+    display configuration or power state, for setups that cannot take an
+    output being reconfigured or a transient zero-display state.
+
+Add the lidDisplayLightOnly config key (default off) for the last case.
+Make forceDpmsOffOnLidClose the single master enable for all of the
+above, default on -- the name is now historical but kept so existing
+configs and an existing =false opt-out still read. Retire
+switchOffPanelOnLidClose, folded into the master, and gate the startup
+panel-heal on the master too. The two stray forceDPMSOff() calls in the
+lock branches are gone, which also removes the docked case where the
+global DPMS call would have blanked the external.
+---
+ src/config/tdepowersaverc_default |   1 +
+ src/settings.cpp                  |  21 ++---
+ src/settings.h                    |  46 +++++++----
+ src/tdepowersave.cpp              | 125 ++++++++++++++++++++++--------
+ src/tdepowersave.h                |  15 ++++
+ 5 files changed, 149 insertions(+), 59 deletions(-)
+
+diff --git a/src/config/tdepowersaverc_default b/src/config/tdepowersaverc_default
+index a2e701a..51b3621 100644
+--- a/src/config/tdepowersaverc_default
++++ b/src/config/tdepowersaverc_default
+@@ -17,6 +17,7 @@ callSetPowerSaveOnAC=true
+ lockMethod=automatic
+ timeToFakeKeyAfterLock=2500
+ forceDpmsOffOnLidClose=true
++lidDisplayLightOnly=false
+ psMsgAsPassivePopup=false
+ autoInactiveBlacklist=mplayer,gmplayer,kaffeine,xine,mencoder,cdrecord,cdrecord-dvd,cdrdao,growisofs,kdetv,xawtv,realplay.bin,wodim
+ autoDimmBlacklist=mplayer,gmplayer,kaffeine,xine,kdetv,xawtv,realplay.bin
+diff --git a/src/settings.cpp b/src/settings.cpp
+index 4c960fc..f575d72 100644
+--- a/src/settings.cpp
++++ b/src/settings.cpp
+@@ -266,19 +266,20 @@ bool Settings::load_general_settings(){
+ 			tdeconfig->readBoolEntry("lockOnLidCloseWhenDocked",false);
+ 		performLidActionWhenDocked =
+ 			tdeconfig->readBoolEntry("performLidActionWhenDocked",false);
+-		/*
+-		 * Also default false, but for a different reason than the two
+-		 * above: those decline to act, and their worst outcome is a machine
+-		 * that stays awake or unlocked; this one acts, and its worst outcome
+-		 * is a display nobody can see. A default that can do the second is
+-		 * judged by its worst day.
+-		 */
+-		switchOffPanelOnLidClose =
+-			tdeconfig->readBoolEntry("switchOffPanelOnLidClose",false);
+ 		autostart = tdeconfig->readBoolEntry("Autostart",false);
+ 		autostartNeverAsk = tdeconfig->readBoolEntry("AutostartNeverAsk",false);
+ 		psMsgAsPassivePopup = tdeconfig->readBoolEntry("psMsgAsPassivePopup",false);
+-		forceDpmsOffOnLidClose = tdeconfig->readBoolEntry("forceDpmsOffOnLidClose",false);
++		/*
++		 * Power-save the internal display on lid close, and how. The master
++		 * defaults on: a shut lid is never being looked at, so the panel is
++		 * turned off in every mode, independently of lock and suspend. The
++		 * mechanism is picked at close time -- disable the internal output
++		 * when docked, DPMS off when it is the only display -- unless
++		 * lidDisplayLightOnly asks for the gentler backlight-only path, which
++		 * changes no display configuration for setups that cannot take one.
++		 */
++		forceDpmsOffOnLidClose = tdeconfig->readBoolEntry("forceDpmsOffOnLidClose",true);
++		lidDisplayLightOnly = tdeconfig->readBoolEntry("lidDisplayLightOnly",false);
+ 		unmountExternalOnSuspend = tdeconfig->readBoolEntry("unmountExternalOnSuspend",true);
+ 
+ 		lockmethod = tdeconfig->readEntry("lockMethod", "NULL");
+diff --git a/src/settings.h b/src/settings.h
+index 1fc17b2..35ed260 100644
+--- a/src/settings.h
++++ b/src/settings.h
+@@ -194,15 +194,19 @@ public:
+ 	 * \li false: do not act while docked (default)
+ 	 */
+ 	bool performLidActionWhenDocked;
+-	//! if the built-in panel's output should be switched off on lid close
+-	/*!
+-	 * This boolean tells if the built-in panel's RandR output should be
+-	 * disabled while the lid is shut and another display is in use, so that
+-	 * the desktop does not keep a region nobody can see.
+-	 * \li true:  switch the panel off, and back on when the lid opens
+-	 * \li false: leave the output alone
+-	 */
+-	bool switchOffPanelOnLidClose;
++	//! only dim the backlight on lid close, never touch the display config
++	/*!
++	 * Modifies \ref forceDpmsOffOnLidClose. When the display is power-saved on
++	 * lid close, this chooses the gentler mechanism: dim the backlight to
++	 * nothing and change no display configuration or power state at all. It is
++	 * the safe choice for setups that cannot survive an output being
++	 * reconfigured, or a transient zero-display state. When off (the default)
++	 * the display itself is switched off -- the internal output is disabled
++	 * while docked, or DPMS'd off when it is the only display.
++	 * \li true:  dim the backlight only, leave the display configuration alone
++	 * \li false: switch the display off, not just its backlight (default)
++	 */
++	bool lidDisplayLightOnly;
+ 	//! if tdepowersave starts on login
+ 	/*!
+ 	 * This boolean tells if tdepowersave should be start automatically on userlogin.
+@@ -219,12 +223,24 @@ public:
+ 	 * \li false: if never ask
+ 	 */
+ 	bool autostartNeverAsk;
+-	//! if tdepowersave should force DPMS shutdown for display for lidclose
+-	/*!
+-	 * This boolean tells if tdepowersave should force dpms shutdown for the display if a
+-	 * lidclose event was recieved
+-	 * \li true:  if shutdown display
+-	 * \li false: if not
++	//! whether to power-save the internal display on lid close
++	/*!
++	 * The master switch for turning the built-in panel off on lid close,
++	 * separately from and independently of locking and suspending -- a shut
++	 * lid is never being looked at, so this runs in every mode, inhibit
++	 * included. Defaults on. The mechanism is chosen automatically and is
++	 * modified by \ref lidDisplayLightOnly:
++	 * \li docked (an external display is connected): the internal output is
++	 *     disabled entirely, light and drive both, and the external is left
++	 *     untouched.
++	 * \li alone (the internal panel is the only display): DPMS off, a power
++	 *     state rather than a configuration change, which restores on input.
++	 * \li lidDisplayLightOnly: the backlight is dimmed and nothing else.
++	 *
++	 * The name is historical -- it once forced only DPMS -- and is kept so
++	 * existing configurations and an existing =false opt-out still read.
++	 * \li true:  power-save the internal display on lid close (default)
++	 * \li false: leave the display alone
+ 	 */
+ 	bool forceDpmsOffOnLidClose;
+ 
+diff --git a/src/tdepowersave.cpp b/src/tdepowersave.cpp
+index 0bf07af..6694d2b 100644
+--- a/src/tdepowersave.cpp
++++ b/src/tdepowersave.cpp
+@@ -122,7 +122,7 @@ tdepowersave::tdepowersave( bool force_acpi_check, bool trace_func ) : KSystemTr
+ 	 * against not restoring it at all. Gated on the setting, so a panel
+ 	 * somebody switched off deliberately is left alone.
+ 	 */
+-	if (settings->switchOffPanelOnLidClose && !hwinfo->getLidclose()) {
++	if (settings->forceDpmsOffOnLidClose && !hwinfo->getLidclose()) {
+ 		display->healInternalPanel();
+ 	}
+ 	connect(hwinfo, TQ_SIGNAL(powerButtonPressed()), this, TQ_SLOT (handlePowerButtonEvent()));
+@@ -151,6 +151,8 @@ tdepowersave::tdepowersave( bool force_acpi_check, bool trace_func ) : KSystemTr
+ 	suspend_dialog_shown = false;
+ 	detailedIsShown = false;
+ 	m_inhibited = false;
++	m_savedLidBrightnessLevel = -1;
++	m_lidForcedDpms = false;
+ 	icon_set_colored = false;
+ 	icon_BG_is_colored = false;
+ 
+@@ -1346,35 +1348,31 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 		// could be shure, that the settings are actuall
+ 		settings->load_general_settings();
+ 
+-		// Nothing automatic happens while power management is inhibited:
+-		// no panel switch, no lock, no action. Lid-open handling in the else
+-		// branch is untouched, so reopening still restores normally.
++		/*
++		 * Power-save the built-in panel first, and independently of
++		 * everything else -- lock, suspend, docked policy, and even inhibit.
++		 * The lid is shut, so the internal panel is not being looked at in
++		 * any mode, which is why this is the one lid-close response that runs
++		 * unconditionally. Doing it before locking also lets the locker draw
++		 * once on the final geometry instead of resizing underneath itself.
++		 * powerSaveInternalDisplay() picks the mechanism and records what it
++		 * did for the open path to undo.
++		 */
++		if (settings->forceDpmsOffOnLidClose && hwinfo->currentSessionIsActive()) {
++			powerSaveInternalDisplay();
++		}
++
++		// Beyond turning the panel off, nothing automatic happens while power
++		// management is inhibited: no lock, no suspend, no configured action.
++		// Lid-open handling in the else branch is untouched, so reopening
++		// still restores normally.
+ 		if (m_inhibited) {
+-			kdDebug() << "power management inhibited; lid close ignored"
+-				  << endl;
++			kdDebug() << "power management inhibited; internal panel powered "
++				  << "off, lid close otherwise ignored" << endl;
+ 			kdDebugFuncOut(trace);
+ 			return;
+ 		}
+ 
+-		/*
+-		 * Switch the built-in panel off before anything else, and in
+-		 * particular before locking. The locker then draws once on the final
+-		 * geometry instead of resizing underneath itself.
+-		 *
+-		 * display->disableInternalPanel() refuses unless another output is
+-		 * already being driven, and puts the panel back itself if switching
+-		 * it off leaves nothing displaying.
+-		 */
+-		if (settings->switchOffPanelOnLidClose) {
+-			if (hwinfo->currentSessionIsActive()) {
+-				display->disableInternalPanel();
+-			}
+-			else {
+-				kdWarning() << "Session is not active, don't touch the "
+-					    << "display configuration on lidclose!" << endl;
+-			}
+-		}
+-
+ 		// handle the lid close
+ 		//
+ 		// Docked -- an external display is connected -- is a policy of its
+@@ -1394,9 +1392,6 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 								SmallIcon("messagebox_warning", 20), this,
+ 								i18n("Warning").utf8(), 10000);
+ 				}
+-				if (settings->forceDpmsOffOnLidClose) {
+-					display->forceDPMSOff();
+-				}
+ 			}
+ 			if (settings->performLidActionWhenDocked &&
+ 			    settings->lidcloseAction >= 0 &&
+@@ -1415,9 +1410,6 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 
+ 				}
+ 			}
+-			if(settings->forceDpmsOffOnLidClose) {
+-				display->forceDPMSOff();
+-			}
+ 		} else if (hwinfo->currentSessionIsActive()) {
+ 			handleActionCall(settings->lidcloseAction, settings->lidcloseActionValue);
+ 		} else {
+@@ -1436,9 +1428,21 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 		 */
+ 		display->restoreInternalPanel();
+ 
+-		if(settings->forceDpmsOffOnLidClose) {
+-			// reset the scheme settings to avoid problems related to call xset on lidclose
+-			setSchemeSettings();
++		// Undo whatever powerSaveInternalDisplay() did on the way down. The
++		// three mechanisms restore differently: a disabled output is put back
++		// by restoreInternalPanel() above; a dimmed backlight is set back to
++		// the level saved on close; and a DPMS-off display is reset through
++		// the scheme, which avoids the problems of leaving a forced xset
++		// state in place.
++		if (m_savedLidBrightnessLevel >= 0) {
++			hwinfo->setBrightnessLevel(m_savedLidBrightnessLevel);
++			m_savedLidBrightnessLevel = -1;
++		}
++		if (m_lidForcedDpms) {
++			if (hwinfo->currentSessionIsActive()) {
++				setSchemeSettings();
++			}
++			m_lidForcedDpms = false;
+ 		}
+ 
+ 		if (settings->lockOnLidClose) {
+@@ -1452,6 +1456,59 @@ void tdepowersave::handleLidEvent( bool closed ){
+ 	kdDebugFuncOut(trace);
+ }
+ 
++/*!
++ * \b Power-save the internal panel on lid close.
++ *
++ * Turning the display off is treated as its own concern, separate from
++ * locking and from suspending: a shut lid is never being looked at, so the
++ * caller runs this in every mode, inhibit included. The mechanism depends on
++ * \ref Settings::lidDisplayLightOnly and on whether an external display is
++ * present, and each choice records what it did so the lid-open path can undo
++ * exactly that:
++ *
++ *  \li lidDisplayLightOnly: dim the backlight to nothing and change no
++ *      display configuration or power state. This is the safe path for
++ *      setups that cannot survive an output being reconfigured or a transient
++ *      zero-display state. The current level is saved for restore on open.
++ *  \li docked (an external display is driving): disable the internal output
++ *      entirely -- light and drive both off, the external untouched.
++ *      disableInternalPanel() refuses if that would leave nothing displaying.
++ *  \li alone (the internal panel is the only display): force DPMS off. That
++ *      is a power state rather than a configuration change, so it avoids a
++ *      zero-display state and restores on the next input event. xset DPMS is
++ *      global, which is exactly why it is used only when there is no external
++ *      display for it to blank.
++ */
++void tdepowersave::powerSaveInternalDisplay(){
++	kdDebugFuncIn(trace);
++
++	if (settings->lidDisplayLightOnly) {
++		if (hwinfo->supportBrightness()) {
++			int level = hwinfo->getCurrentBrightnessLevel();
++			if (level > 0) {
++				m_savedLidBrightnessLevel = level;
++				hwinfo->setBrightnessLevel(0);
++			}
++		}
++		else {
++			kdWarning() << "lidDisplayLightOnly is set but the machine cannot "
++				    << "control brightness; leaving the display alone" << endl;
++		}
++		kdDebugFuncOut(trace);
++		return;
++	}
++
++	if (display->externalDisplayConnected()) {
++		display->disableInternalPanel();
++	}
++	else {
++		display->forceDPMSOff();
++		m_lidForcedDpms = true;
++	}
++
++	kdDebugFuncOut(trace);
++}
++
+ /*!
+  * \b Slot to show the login dialog if the desktop was locked before the suspend.
+  */
+diff --git a/src/tdepowersave.h b/src/tdepowersave.h
+index bdcce7d..6548ea2 100644
+--- a/src/tdepowersave.h
++++ b/src/tdepowersave.h
+@@ -112,6 +112,15 @@ private:
+ 	/*! Runtime only, so "temporary" means until toggled off or the next
+ 	 *  login. Gates the inactivity, dimming and lid-close responses. */
+ 	bool m_inhibited;
++	//! backlight level saved before a light-only lid-close dim, or -1
++	/*! Set when \ref powerSaveInternalDisplay() dims the backlight to nothing
++	 *  in light-only mode, so the exact level can be restored on lid open.
++	 *  -1 means nothing was dimmed and there is nothing to restore. */
++	int m_savedLidBrightnessLevel;
++	//! true while the (only) display was DPMS'd off by a lid close
++	/*! Records that \ref powerSaveInternalDisplay() forced DPMS off, so lid
++	 *  open resets the scheme to undo the forced xset state cleanly. */
++	bool m_lidForcedDpms;
+ 	//! represent the state of the configure dialog
+ 	/*!
+ 	* This boolean represent information about the configure dialog. Use this to inform
+@@ -381,6 +390,12 @@ private slots:
+ 
+ 	//! this lock/reactivate the screen if a lidclosetStatus() signal is triggered
+ 	void handleLidEvent( bool closed );
++	//! power-save the internal panel on lid close, independently of lock/suspend
++	/*! Runs in every mode, inhibit included, because a shut lid is never being
++	 *  looked at. Dims the backlight only in light-only mode, otherwise
++	 *  disables the internal output when docked or DPMS's it off when it is
++	 *  the only display. Restore is handled by handleLidEvent()'s open path. */
++	void powerSaveInternalDisplay();
+ 	//! show the login dialog after locked the screen
+ 	void activateLoginScreen();
+ 
