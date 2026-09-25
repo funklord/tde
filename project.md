@@ -1408,6 +1408,56 @@ panel-off section above already records. Restore correctness (brightness
 level round-trip, DPMS scheme reset) is by construction from the recorded
 mode, not yet observed across a real lid cycle.
 
+## Portability: the lid handling without systemd
+
+**Traced 2026-09-25 from the source**, prompted by the holder asking whether
+the lid work carries to Devuan and other systemd-free desktops -- the
+project's own premise, since this is the only systemd machine and it is
+going away. Read as a set of dependencies rather than a yes/no, because the
+pieces differ.
+
+**No init system in it at all -- the mechanisms.** Panel-off is `xrandr`,
+DPMS is `xset`, backlight is a `/sys/class/backlight` write through the TDE
+hardware library. All X11 and kernel. And the lid event itself is read
+directly from the kernel ACPI lid switch as a tdehwlib event device
+(`TDEEventDeviceType::ACPILidSwitch`, `hardware.cpp` around 798), emitted as
+`lidclosetStatus`. Nothing consults a login manager to know the lid closed.
+
+**A session/seat service is needed -- but not specifically systemd.**
+`handleLidEvent` gates its actions on `currentSessionIsActive()`, so it will
+not blank a session that is not the active one. That check runs through
+`dbusInterface`, which speaks **both** `org.freedesktop.login1` **and**
+`org.freedesktop.ConsoleKit` and uses whichever registers on D-Bus
+(`onServiceRegistered`, `checkActiveSession` at `dbusInterface.cpp:374`):
+
+- **systemd** -> logind. This machine, tested.
+- **elogind** (Artix, Gentoo, many Devuan setups) -> the same `login1` path,
+  including the lid-switch inhibitor at `dbusInterface.cpp:298`.
+- **ConsoleKit2** (classic Devuan) -> the ConsoleKit branch. Works, and takes
+  no inhibitor -- which it does not need, because without logind nothing else
+  is claiming the lid switch to fight over.
+- **none of the three** -> `checkActiveSession()` returns false, the session
+  reads as inactive, and the lid actions do not fire. The one configuration
+  where the feature silently does nothing.
+
+**Two things are true and worth keeping straight.** None of the display-off
+work added any systemd coupling: the split and the checkbox sit inside the
+existing session gate and inherit its portability exactly; the session/seat
+dependency is upstream's and predates all of it. And the ConsoleKit path,
+while present in the source, is **not measured** -- there is no ConsoleKit on
+this box -- so "works on Devuan" is built-for, not observed. By the code it
+should, given ConsoleKit2 or elogind running and the session registered,
+which is the normal case; a real Devuan/ConsoleKit2 test is what turns
+*should* into *does*, and is the obvious thing to do first on that machine.
+
+**One distro-level caveat, not a code matter.** On a systemd-free box, make
+sure nothing else -- an `acpid` lid script, another power manager -- is also
+handling the lid, the same as anywhere. And the backlight write needs the
+session to own `/sys/class/backlight` (a udev/ACL grant or the `video`
+group); logind arranges it on seats, ConsoleKit setups usually via a udev
+rule. If that permission is missing the backlight will not move while
+everything else does.
+
 ## GTK applications opening a folder get Cervisia -- FIXED
 
 **Fixed 2026-09-08** on `fix/directory-mime-default` (master) and
