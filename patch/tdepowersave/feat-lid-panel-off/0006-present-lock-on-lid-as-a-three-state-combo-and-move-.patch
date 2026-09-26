@@ -23,6 +23,8 @@ docked" checkbox that qualifies it, which is where a tester looked for the
 relationship.
 
 Both verified by rendering the generated dialog on each page.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/configure_Dialog.ui | 61 +++++++++++++++++++++++------------------
  src/configuredialog.cpp | 23 +++++++++-------

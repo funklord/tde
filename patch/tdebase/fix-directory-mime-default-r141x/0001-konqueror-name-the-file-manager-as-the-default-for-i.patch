@@ -35,6 +35,8 @@ Verified by building into a staging prefix and putting it ahead in
 XDG_DATA_DIRS, with a config home of its own so no user setting could
 answer instead: the query returns the file manager with the staged tree
 present and Cervisia without it.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  konqueror/CMakeLists.txt    |  9 +++++++++
  konqueror/tde-mimeapps.list | 21 +++++++++++++++++++++

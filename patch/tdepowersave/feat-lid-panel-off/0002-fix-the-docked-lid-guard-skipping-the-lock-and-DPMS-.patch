@@ -16,6 +16,8 @@ Hoist the guard so it governs the entire lid-close response: docked and
 configured to ignore means no lock, no DPMS-off and no action. The two
 inner branches below it are unchanged apart from losing the duplicated
 docked test that now sits above them.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/tdepowersave.cpp | 32 +++++++++++++++++++-------------
  1 file changed, 19 insertions(+), 13 deletions(-)

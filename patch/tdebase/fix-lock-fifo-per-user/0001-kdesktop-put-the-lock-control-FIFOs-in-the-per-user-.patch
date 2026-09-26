@@ -40,6 +40,8 @@ process-wide and never restored it, and this runs in a worker thread, so
 any file the rest of the process created in that window got whatever mode
 it asked for. It was never needed: a umask can only clear bits, 0600 has
 none a sane one would clear, and the chmod sets the mode outright.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  kdesktop/lock/lockprocess.cpp | 62 +++++++++++++++++++++++++++++------
  kdesktop/lock/lockprocess.h   |  9 +++--

@@ -8,6 +8,8 @@ The checkbox was added without the signal connection its siblings carry, so
 ticking it changed nothing the dialog noticed and the Apply button stayed
 disabled. Connect its toggled(bool) to general_valueChanged(), the same slot
 cB_actionLidDocked and the other general controls use.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/configure_Dialog.ui | 6 ++++++
  1 file changed, 6 insertions(+)

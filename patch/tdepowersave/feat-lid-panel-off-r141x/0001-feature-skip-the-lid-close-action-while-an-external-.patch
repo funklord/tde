@@ -34,6 +34,8 @@ lock the screen.
 The new ignoreLidCloseWhenDocked defaults to true, so the behaviour
 matches the platform default that the inhibitor currently overrides.
 Anyone who wants the old unconditional action back sets it to false.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  ConfigureChecks.cmake |  7 +++++
  src/CMakeLists.txt    |  1 +

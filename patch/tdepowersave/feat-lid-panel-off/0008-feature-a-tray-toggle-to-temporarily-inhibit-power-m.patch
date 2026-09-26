@@ -25,6 +25,8 @@ ends -- nothing is written to the configuration, which is the semantics
 Like the netcfgd profile page, this is its own concern rather than the
 lid's and reads onto its own upstream pull request; it shares the lid
 branches only locally.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/tdepowersave.cpp | 66 ++++++++++++++++++++++++++++++++++++++++++++
  src/tdepowersave.h   |  8 ++++++

@@ -23,6 +23,8 @@ This fixes the visibility of the existing "Lock screen on lid close"
 checkbox on the same hardware, not only the new ones -- it was hidden
 there all along, which is how the machine came to lock on lid close with
 no visible setting for it.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/configuredialog.cpp |  7 +++++--
  src/hardware.cpp        | 12 ++++++++++++

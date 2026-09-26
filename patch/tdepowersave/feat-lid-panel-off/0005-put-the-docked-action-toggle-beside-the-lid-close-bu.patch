@@ -13,6 +13,8 @@ the dialog's own organisation pointing where it belongs.
 Move "Perform the lid-close action, even when docked" into the Button
 Events group. The lock toggle stays in Lock Screen beside "Lock screen on
 lid close"; each docked toggle now sits with the setting it qualifies.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/configure_Dialog.ui | 18 +++++++++---------
  1 file changed, 9 insertions(+), 9 deletions(-)

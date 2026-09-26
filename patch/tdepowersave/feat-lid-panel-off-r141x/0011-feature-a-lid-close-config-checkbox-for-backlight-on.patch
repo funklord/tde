@@ -17,6 +17,8 @@ group alongside the other lid settings, and hide it when the machine has no
 lid, exactly as the lock-mode combo and the docked action are hidden. When
 checked, a lid close only dims the backlight and never touches the display;
 unchecked, the display itself is switched off, which is the default.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/configure_Dialog.ui | 11 ++++++++++-
  src/configuredialog.cpp |  4 ++++

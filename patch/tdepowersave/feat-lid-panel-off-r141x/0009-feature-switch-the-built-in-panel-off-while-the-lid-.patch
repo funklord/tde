@@ -42,6 +42,8 @@ its preferred mode.
 
 Default off. The setting beside it defaults on because its worst outcome is
 a machine that stays awake; this one's is a display nobody can see.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/screen.cpp       | 418 +++++++++++++++++++++++++++++++++++++++++++
  src/screen.h         |  30 ++++

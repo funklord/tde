@@ -38,6 +38,8 @@ switchOffPanelOnLidClose, folded into the master, and gate the startup
 panel-heal on the master too. The two stray forceDPMSOff() calls in the
 lock branches are gone, which also removes the docked case where the
 global DPMS call would have blanked the external.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/config/tdepowersaverc_default |   1 +
  src/settings.cpp                  |  21 ++---

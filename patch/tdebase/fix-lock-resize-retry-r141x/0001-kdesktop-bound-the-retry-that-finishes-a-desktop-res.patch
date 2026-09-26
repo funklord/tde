@@ -30,6 +30,8 @@ This matters more than its rarity suggests. A desktop resize while the
 screen is locked is exactly what a laptop does when its lid closes onto an
 external display, and anything that disables an output on lid close would
 make it the common case rather than the unusual one.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  kdesktop/lock/lockprocess.cpp | 58 ++++++++++++++++++++++++++++++++---
  kdesktop/lock/lockprocess.h   |  2 ++

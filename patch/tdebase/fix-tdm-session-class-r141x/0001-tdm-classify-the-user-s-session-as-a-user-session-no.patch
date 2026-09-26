@@ -43,6 +43,8 @@ pam_putenv() rather than discarding it as the original line did.
 This changes what logind is told about the session. It does not change who
 may authenticate, and it grants no new rights: a session classified as a
 user session is what an ordinary login already is everywhere else.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  tdm/backend/client.c | 14 +++++++++++++-
  1 file changed, 13 insertions(+), 1 deletion(-)

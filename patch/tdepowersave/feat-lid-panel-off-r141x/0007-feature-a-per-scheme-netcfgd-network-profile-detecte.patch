@@ -28,6 +28,8 @@ This is a distinct feature from the lid work it currently shares a branch
 with, and reads onto its own upstream pull request: it touches the scheme
 path and the netcfgd relationship, not the lid. Extract it before
 submitting.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/configure_Dialog.ui | 74 +++++++++++++++++++++++++++++++++++++++++
  src/configuredialog.cpp | 32 ++++++++++++++++++

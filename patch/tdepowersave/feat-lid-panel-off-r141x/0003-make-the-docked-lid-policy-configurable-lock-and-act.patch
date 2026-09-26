@@ -32,6 +32,8 @@ Both toggles are exposed in the configure dialog beside "Lock screen on
 lid close", hidden together with it on non-laptops, and the docked lock
 counts toward enabling the lock-method combo. Loaded, saved and wired to
 general_valueChanged() like the controls around them.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/configure_Dialog.ui | 30 +++++++++++++++++++++++++++++-
  src/configuredialog.cpp | 17 +++++++++++++----
