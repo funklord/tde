@@ -1458,6 +1458,38 @@ group); logind arranges it on seats, ConsoleKit setups usually via a udev
 rule. If that permission is missing the backlight will not move while
 everything else does.
 
+## The autosuspend countdown ignores the user returning -- FIXED
+
+**Fixed 2026-09-29** on `feat/lid-panel-off-r141x` (built and confirmed by
+the holder 2026-09-30), the master twin carrying the same change. Reported
+as: the machine suspends after the screen is woken by a mouse move, with a
+countdown window that demands the Cancel button or it suspends anyway.
+
+The inactivity monitor fires `inactivityTimeExpired` and then stops -- the
+10-second check does not rearm after emitting. `do_autosuspendWarn` shows the
+countdown, and from there nothing watches the X idle time, so moving the
+mouse or pressing a key does not reach the countdown at all. The only way to
+stop it was the Cancel button, which is precisely what someone is not
+reaching for in the second after their screen lights up.
+
+`autodimm` had already solved "the user is active again": a 1-second poll
+(`startCheckForActivity` / `pollActivity`) that emits `UserIsActiveAgain`
+when the idle time drops, used to re-brighten the display. That poll moved
+**down into the shared `inactivity` base class**, so `autosuspend` -- until
+now an empty subclass -- gets it for free; `autodimm` is unchanged in
+behaviour, just relocated. `do_autosuspendWarn` now calls
+`startCheckForActivity()` after showing the dialog, and `UserIsActiveAgain`
+is wired to close the countdown. Because the dialog is `WDestructiveClose`,
+closing it with time remaining emits `dialogClosed(true)`, which routes
+through the existing `do_autosuspend(true)` cancel path -- stop, do not
+suspend, restart monitoring -- exactly as the Cancel button does. The
+`countdown` pointer is nulled there so a late activity poll cannot close a
+dialog that has already gone.
+
+Its own upstream PR, independent of the lid work it happens to share a
+branch with; it wants extracting to a clean
+`fix/autosuspend-cancel-on-activity` branch before submission.
+
 ## GTK applications opening a folder get Cervisia -- FIXED
 
 **Fixed 2026-09-08** on `fix/directory-mime-default` (master) and
@@ -1696,10 +1728,8 @@ whatever tdm does, and indistinguishable from the bug being tested for.
 
 ### Verification state, 2026-09-18
 
-The tdepowersave work stands at `+lidfix12` (built; installed through
-`+lidfix11`, the lid-close backlight-only checkbox awaiting a `dpkg -i`) and
-the tdebase work at `+lockfix2`, installed. What is confirmed, and what is
-only built:
+The tdepowersave work stands at `+lidfix14` (installed) and the tdebase
+work at `+lockfix2`, installed. What is confirmed, and what is only built:
 
 **Confirmed by running it:** the FIFO and session-class fixes, in
 production since 2026-09-06; docked lid-close no longer locking
@@ -1710,22 +1740,19 @@ the actual generated dialog headlessly; and, on `+lidfix10`, the
 display-off split's **alone** path in inhibit mode -- with the inhibit
 toggle on, closing the lid on the single display now powers the panel off
 (DPMS) where before inhibit skipped it and it stayed lit, and the machine
-stays awake. Confirmed by the holder 2026-09-24.
+stays awake. Confirmed by the holder 2026-09-24. Two more confirmed by the
+holder since: the `lidDisplayLightOnly` backlight-only checkbox
+(`+lidfix12`/`+lidfix13`, once its Apply signal was wired), ticking it and
+closing the lid dims the backlight without reconfiguring the display; and
+the autosuspend countdown now cancelling when the mouse moves (`+lidfix14`,
+confirmed 2026-09-30), where before it demanded the Cancel button.
 
 **Built and wired, not yet exercised live**, all single-display testable:
 the inhibit toggle skipping the idle suspend/dim and the lid-close
 (finding 11); the lock-on-lid combo mapping to behaviour on a non-docked
 machine; the netcfgd profile firing on a scheme switch (finding 10) --
 set a scheme's profile to `offline`, switch to it, and `ncfg profile get`
-should read `offline` where it now reads `no profile chosen`; and the
-display-off split's `lidDisplayLightOnly` path, now the "On lid close,
-switch off only the backlight, not the display" checkbox in the Button
-Events page (`+lidfix12`): with it ticked, closing the lid should dim the
-backlight and leave the display alone (its inhibit + lid alone path is
-already confirmed, above). The checkbox's own visibility wants the witness
-test rather than a base-class render, which is what falsely passed once
-before -- `hasLid()` is true on this machine, so it should show, but that is
-confirmed by opening the dialog, not asserted from the .ui.
+should read `offline` where it now reads `no profile chosen`.
 
 **Needs an external display, so unverified:** the display-off **docked**
 path (`disableInternalPanel()` on lid close, external stays lit) and
@@ -1747,6 +1774,15 @@ not by that tool.
 
 ## Corrected readings, kept so they are not repeated
 
+- **A clean build failing on `tdeprocess.h` / `tdeApp` does not mean the
+  TDE install changed.** It means the checkout is on a `master`-based
+  branch. Upstream `master` modernised these names to the `tde*` spelling;
+  the `r14.1.x` line this machine's R14.1.6 matches kept the `k*` spelling
+  (`kprocess.h`, `kglobalaccel.h`, `kuniqueapplication.h`, `kapp`,
+  `KUniqueApplication`). A `feat/*-r141x` branch builds cleanly here; its
+  `feat/*` twin does not, and that is the branch giveaway, not an
+  environment fault. Confirmed 2026-09-30 after an hour spent "adapting"
+  the source before noticing the wrong branch was checked out.
 - **A resident `kdesktop_lock --internal <pid>` sitting in `sigsuspend` is
   not hung.** It was first read here as a stuck locker. `kdesktop/lock/main.cpp:392-455`
   shows `--internal` is the pre-spawned helper: it signals kdesktop it is
