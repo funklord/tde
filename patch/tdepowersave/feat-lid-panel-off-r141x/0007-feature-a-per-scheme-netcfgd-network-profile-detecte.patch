@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Fri, 18 Sep 2026 11:12:50 +0200
-Subject: [PATCH 07/12] feature: a per-scheme netcfgd network profile, detected
+Subject: [PATCH 07/13] feature: a per-scheme netcfgd network profile, detected
  not linked
 
 A power scheme can now carry a netcfgd profile to switch to when it

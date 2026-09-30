@@ -1,0 +1,345 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Tue, 29 Sep 2026 19:24:27 +0200
+Subject: [PATCH 13/13] feature: cancel the autosuspend countdown when the user
+ is active again
+
+The inactivity monitor stops once it has warned about an imminent
+autosuspend, so nothing watches for the user coming back. Moving the mouse
+or pressing a key -- which is exactly what someone does when the screen
+wakes and the countdown appears -- did nothing, and the suspend fired unless
+they reached the Cancel button in time.
+
+autodimm already solved "the user is active again": it polls the X idle time
+and re-brightens the display. Move that poll -- startCheckForActivity(), the
+UserIsActiveAgain() signal and the polling slot -- down into the shared
+inactivity base class so autosuspend gets it too, and have the countdown
+subscribe: on activity it closes the dialog, which (being WDestructiveClose)
+reports time remaining and so routes to the cancel path, stopping the
+suspend and restarting monitoring exactly as the Cancel button does.
+
+Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
+---
+ src/autodimm.cpp     | 51 --------------------------------------------
+ src/autodimm.h       | 32 +++------------------------
+ src/inactivity.cpp   | 49 ++++++++++++++++++++++++++++++++++++++++++
+ src/inactivity.h     | 20 +++++++++++++++--
+ src/tdepowersave.cpp | 30 ++++++++++++++++++++++++++
+ src/tdepowersave.h   |  2 ++
+ 6 files changed, 102 insertions(+), 82 deletions(-)
+
+diff --git a/src/autodimm.cpp b/src/autodimm.cpp
+index 5eb6f24..00b604a 100644
+--- a/src/autodimm.cpp
++++ b/src/autodimm.cpp
+@@ -33,12 +33,6 @@
+ /*! The default constructor of the class autodimm */
+ autodimm::autodimm(screen *disp) : inactivity(disp) {
+ 	kdDebugFuncIn(trace);
+-
+-	lastIdleTime = 0;
+-	
+-	checkActivity = new TQTimer( this );
+-	connect( checkActivity, TQ_SIGNAL(timeout()), this, TQ_SLOT(pollActivity()));
+-
+ 	kdDebugFuncOut(trace);
+ }
+ 
+@@ -47,49 +41,4 @@ autodimm::~autodimm() {
+ 	kdDebugFuncIn(trace);
+ }
+ 
+-/*!
+- * Public function to start to check (poll) if the user get active again.
+- */
+-void autodimm::startCheckForActivity() {
+-	kdDebugFuncIn(trace);
+-
+-	lastIdleTime = 0;
+-
+-	// stop the timer if running
+-	if (checkActivity->isActive()) 
+-		checkActivity->stop();
+-	
+-	checkActivity->start(RECHECK_INTERVALL, false);
+-	
+-	kdDebugFuncOut(trace);
+-}
+-
+-/*!
+- * \b Slot to call check if the user is active again.
+- */
+-void autodimm::pollActivity() {
+-	kdDebugFuncIn(trace);
+-
+-	unsigned long idletime = 0;
+-
+-	idletime = getXInactivity();
+-	if (idletime < lastIdleTime) {
+-		kdDebug() << "Looks as if the user is active again (lastIdleTime:" << lastIdleTime 
+-			  << " , current idletime: " << idletime << ")" << endl;
+-
+-		// The user is/was active ...
+-		if (idletime <= 1000) 
+-			kdDebug() << "Looks as if the user was active within the last second" << endl;
+-
+-		// stop the timer ... no need to let run ... start again if needed
+-		if (checkActivity->isActive()) checkActivity->stop();
+-		// emit the signal that the user is active again.
+-		emit UserIsActiveAgain();
+-	} else {
+-		lastIdleTime = idletime;
+-	}
+-
+-	kdDebugFuncOut(trace);
+-}
+-
+ #include "autodimm.moc"
+diff --git a/src/autodimm.h b/src/autodimm.h
+index 08557b4..c18ae7d 100644
+--- a/src/autodimm.h
++++ b/src/autodimm.h
+@@ -46,35 +46,9 @@ public:
+ 	//! default destructor
+ 	~autodimm();
+ 
+-	//! to start check if the user is active again
+-	void startCheckForActivity();
+-
+-signals:
+-	//! signal emited if the user is active again
+-	void UserIsActiveAgain();
+-
+-private: 
+-	//! idle time from the last check
+-	unsigned long lastIdleTime;
+-
+-	//! TQTimer intervall for the Timer to recheck for user activity
+-	/*!
+-	 * The time intervall to recheck for the activity of the user.
+-	 * The timeslice is currently 1 sec.
+-	 */
+-	static const int RECHECK_INTERVALL = 1000;
+-
+-	//! TQTimer for check activity
+-	/*!
+-	 * This timer is used to check if the user get active again.
+-	 * The timerinterval is defined trough \ref RECHECK_INTERVALL .
+-	 */
+-	TQTimer *checkActivity;
+-	
+-private slots:
+-	//! to poll X to get info if the user is active again
+-	void pollActivity();
+-
++	// The "user is active again" polling -- startCheckForActivity(), the
++	// UserIsActiveAgain() signal and the poll behind them -- now lives in the
++	// inactivity base class, so autosuspend shares it. See inactivity.h.
+ };
+ 
+ #endif
+diff --git a/src/inactivity.cpp b/src/inactivity.cpp
+index ed35869..e1f7f82 100644
+--- a/src/inactivity.cpp
++++ b/src/inactivity.cpp
+@@ -61,6 +61,10 @@ inactivity::inactivity(screen *disp) : display(disp),
+ 	checkInactivity =  new TQTimer( this );
+ 	connect( checkInactivity, TQ_SIGNAL(timeout()), this, TQ_SLOT(check()));
+ 
++	lastIdleTime = 0;
++	checkActivity = new TQTimer( this );
++	connect( checkActivity, TQ_SIGNAL(timeout()), this, TQ_SLOT(pollActivity()));
++
+ 	kdDebugFuncOut(trace);
+ }
+ 
+@@ -169,8 +173,10 @@ void inactivity::stop() {
+ 	kdDebugFuncIn(trace);
+ 
+ 	if (checkInactivity->isActive()) checkInactivity->stop();
++	if (checkActivity->isActive()) checkActivity->stop();
+ 	timeToInactivity = 0;
+ 	idleTime = 0;
++	lastIdleTime = 0;
+ 	blacklisted_running_last = 0;
+ 	
+ 	pidof_call_failed = false;
+@@ -181,6 +187,49 @@ void inactivity::stop() {
+ 	kdDebugFuncOut(trace);
+ }
+ 
++/*!
++ * Start polling for the user becoming active again, after an inactivity
++ * action has fired. The caller connects to \ref UserIsActiveAgain() to undo
++ * whatever it did -- brighten the display, or cancel a pending autosuspend.
++ */
++void inactivity::startCheckForActivity() {
++	kdDebugFuncIn(trace);
++
++	lastIdleTime = 0;
++
++	if (checkActivity->isActive())
++		checkActivity->stop();
++
++	checkActivity->start(RECHECK_INTERVALL, false);
++
++	kdDebugFuncOut(trace);
++}
++
++/*!
++ * \b Slot polled while \ref checkActivity runs: read the X idle time and, when
++ * it drops below the previous reading, take that as the user having returned
++ * and emit \ref UserIsActiveAgain(). The timer stops itself first, so the
++ * signal fires once per activity spell.
++ */
++void inactivity::pollActivity() {
++	kdDebugFuncIn(trace);
++
++	unsigned long idletime = getXInactivity();
++	if (idletime < lastIdleTime) {
++		kdDebug() << "Looks as if the user is active again (lastIdleTime:"
++			  << lastIdleTime << ", current idletime: " << idletime << ")"
++			  << endl;
++
++		if (checkActivity->isActive())
++			checkActivity->stop();
++		emit UserIsActiveAgain();
++	} else {
++		lastIdleTime = idletime;
++	}
++
++	kdDebugFuncOut(trace);
++}
++
+ /*!
+  * This function query the idle-time of user-imput from the X-Server and set
+  * the return value to \ref idleTime.
+diff --git a/src/inactivity.h b/src/inactivity.h
+index e2f1594..ee4fc27 100644
+--- a/src/inactivity.h
++++ b/src/inactivity.h
+@@ -71,7 +71,12 @@ public:
+ 	void start(int, TQStringList);
+ 	//! to stop the monitoring of the X-Server
+ 	void stop();
+-	
++	//! to start polling for the user becoming active again
++	/*! Used after an inactivity action has been triggered -- dimming the
++	 *  display, or warning about an imminent autosuspend -- so that the
++	 *  action can be undone the moment the user returns. */
++	void startCheckForActivity();
++
+ 	//! to get the current user inactivity
+ 	unsigned long getXInactivity();
+ 
+@@ -79,9 +84,11 @@ signals:
+ 
+ 	//! signal emited if the with \ref start() set time of inactivity is expired
+ 	void inactivityTimeExpired();
++	//! signal emited if the user is active again after \ref startCheckForActivity()
++	void UserIsActiveAgain();
+ 	//! signal to emit error msg
+ 	void displayErrorMsg( TQString );
+-	
++
+ private:
+ 
+ 	//! pointer to the process to call pidof
+@@ -145,6 +152,13 @@ private:
+ 	 */
+ 	TQTimer *checkInactivity;
+ 
++	//! idle time seen on the last activity poll
++	unsigned long lastIdleTime;
++	//! TQTimer interval for \ref checkActivity, in msec
++	static const int RECHECK_INTERVALL = 1000;
++	//! TQTimer used by \ref startCheckForActivity() to poll for activity
++	TQTimer *checkActivity;
++
+ 	screen *display;  // No ownership here!!
+ 	bool prev_screensaver_enabled;
+ 	unsigned long prev_idle_time;
+@@ -167,6 +181,8 @@ private slots:
+ 	void check();
+ 	//! to monitor the values
+ 	void recheck();
++	//! to poll X and emit \ref UserIsActiveAgain() once the user returns
++	void pollActivity();
+ 	//! to get the PIDs of blacklisted programs/processes
+ 	void getPIDs(TDEProcess *, char *, int);
+ 	//! to get the signal if the command call is exited
+diff --git a/src/tdepowersave.cpp b/src/tdepowersave.cpp
+index 6694d2b..89902fe 100644
+--- a/src/tdepowersave.cpp
++++ b/src/tdepowersave.cpp
+@@ -131,6 +131,7 @@ tdepowersave::tdepowersave( bool force_acpi_check, bool trace_func ) : KSystemTr
+ 	connect(hwinfo, TQ_SIGNAL(batteryWARNState(int,int)), this, TQ_SLOT(notifyBatteryStatusChange (int,int)));
+ 	connect(hwinfo, TQ_SIGNAL(desktopSessionIsActive(bool)), this, TQ_SLOT (handleSessionState(bool)));
+ 	connect(autoSuspend, TQ_SIGNAL(inactivityTimeExpired()), this, TQ_SLOT(do_autosuspendWarn()));
++	connect(autoSuspend, TQ_SIGNAL(UserIsActiveAgain()), this, TQ_SLOT(do_cancelAutosuspendOnActivity()));
+ 	connect(autoDimm, TQ_SIGNAL(inactivityTimeExpired()), this, TQ_SLOT(do_downDimm()));
+ 	connect(autoDimm, TQ_SIGNAL(UserIsActiveAgain()), this, TQ_SLOT(do_upDimm()));
+ 
+@@ -1037,6 +1038,11 @@ void tdepowersave::do_autosuspendWarn() {
+ 
+ 				connect(countdown, TQ_SIGNAL(dialogClosed(bool)), this, TQ_SLOT(do_autosuspend(bool)));
+ 				countdown->showDialog();
++
++				// Watch for the user returning while the countdown runs, so
++				// moving the mouse or pressing a key cancels the suspend
++				// rather than leaving them to hit Cancel before it fires.
++				autoSuspend->startCheckForActivity();
+ 			}
+ 		}
+ 		else {
+@@ -1061,6 +1067,11 @@ bool tdepowersave::do_autosuspend(bool cancel) {
+ 	kdDebugFuncIn(trace);
+ 	autoSuspend->stop();
+ 
++	// The dialog destroys itself (WDestructiveClose) when it emits this, so
++	// drop our pointer to it -- do_cancelAutosuspendOnActivity() must never
++	// close a dialog that has already gone.
++	countdown = 0;
++
+ 	if (!cancel) {
+ 		if(!settings->disableNotifications) {
+ 			KNotifyClient::event( this->winId(), "autosuspend_event",
+@@ -1091,6 +1102,25 @@ bool tdepowersave::do_autosuspend(bool cancel) {
+ 	}
+ }
+ 
++/*!
++ * \b Slot called when the user becomes active again while the autosuspend
++ * countdown is showing. Closing the dialog (it is WDestructiveClose) makes it
++ * emit dialogClosed(true), since time remains, which routes to
++ * do_autosuspend(true) -- so the suspend is cancelled and inactivity
++ * monitoring restarts, exactly as the Cancel button does.
++ */
++void tdepowersave::do_cancelAutosuspendOnActivity() {
++	kdDebugFuncIn(trace);
++
++	if (countdown) {
++		kdDebug() << "User active again during the autosuspend countdown; "
++			  << "cancelling it" << endl;
++		countdown->close();
++	}
++
++	kdDebugFuncOut(trace);
++}
++
+ /*!
+  * \b Slot to dimm the display down to the configured level if the signal
+  * \ref autodimm::inactivityTimeExpired was recieved.
+diff --git a/src/tdepowersave.h b/src/tdepowersave.h
+index 6548ea2..5e6c99c 100644
+--- a/src/tdepowersave.h
++++ b/src/tdepowersave.h
+@@ -338,6 +338,8 @@ private slots:
+ 	void do_autosuspendWarn();
+ 	//! execute the autosuspend
+ 	bool do_autosuspend(bool cancel);
++	//! cancel the autosuspend countdown when the user becomes active again
++	void do_cancelAutosuspendOnActivity();
+ 	//! starts the Yast2-power-management module
+ 	void do_config();
+ 	//! sets the new scheme with all settings

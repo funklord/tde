@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Thu, 17 Sep 2026 18:10:42 +0200
-Subject: [PATCH 03/12] make the docked lid policy configurable, lock and
+Subject: [PATCH 03/13] make the docked lid policy configurable, lock and
  action separately
 
 The previous fix hoisted a single ignoreLidCloseWhenDocked flag to cover

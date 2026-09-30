@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Fri, 18 Sep 2026 10:02:57 +0200
-Subject: [PATCH 06/12] present lock-on-lid as a three-state combo, and move
+Subject: [PATCH 06/13] present lock-on-lid as a three-state combo, and move
  the lid button down
 
 Two dialog refinements the copyright holder asked for on seeing the

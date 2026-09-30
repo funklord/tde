@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Thu, 17 Sep 2026 23:47:48 +0200
-Subject: [PATCH 04/12] show the lid options when a lid exists, not when the
+Subject: [PATCH 04/13] show the lid options when a lid exists, not when the
  box says laptop
 
 The configure dialog hid "Lock screen on lid close" -- and, with the

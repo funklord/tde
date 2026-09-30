@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Mon, 7 Sep 2026 15:25:03 +0200
-Subject: [PATCH 09/12] feature: switch the built-in panel off while the lid is
+Subject: [PATCH 09/13] feature: switch the built-in panel off while the lid is
  shut
 
 Closing the lid turns off the backlight. It does not disable the RandR

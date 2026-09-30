@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Sun, 6 Sep 2026 19:23:12 +0200
-Subject: [PATCH 01/12] feature: skip the lid-close action while an external
+Subject: [PATCH 01/13] feature: skip the lid-close action while an external
  display is on
 
 Closing the lid of a docked machine suspends it, even though the session

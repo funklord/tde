@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Fri, 25 Sep 2026 10:52:15 +0200
-Subject: [PATCH 12/12] fix: wire the lid backlight-only checkbox to enable
+Subject: [PATCH 12/13] fix: wire the lid backlight-only checkbox to enable
  Apply
 
 The checkbox was added without the signal connection its siblings carry, so

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Thu, 17 Sep 2026 17:31:22 +0200
-Subject: [PATCH 02/12] fix the docked lid guard skipping the lock and DPMS-off
+Subject: [PATCH 02/13] fix the docked lid guard skipping the lock and DPMS-off
  paths
 
 ignoreLidCloseWhenDocked was checked only inside the branch that handles a

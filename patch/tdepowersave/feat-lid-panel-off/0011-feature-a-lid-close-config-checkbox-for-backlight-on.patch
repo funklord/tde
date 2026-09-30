@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nabeel Sowan <nabeel@vibes.se>
 Date: Fri, 25 Sep 2026 09:55:41 +0200
-Subject: [PATCH 11/12] feature: a lid-close config checkbox for backlight-only
+Subject: [PATCH 11/13] feature: a lid-close config checkbox for backlight-only
  display-off
 
 lidDisplayLightOnly is a permanent per-machine compatibility setting for
