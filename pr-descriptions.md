@@ -270,6 +270,129 @@ stack.
 
 ---
 
+## PR 5 -- tdebase: `fix/lock-resize-retry`
+
+**Title:** `kdesktop: bound the retry that finishes a desktop resize`
+
+`doDesktopResizeFinish()` re-armed itself at zero milliseconds for as long
+as `closeCurrentWindow()` kept reporting true, with no cap on the number of
+attempts. That function reports true for as long as anything remains in
+`mDialogs`, and a dialog leaves that list only once its `exec()` has
+returned -- so a dialog that declines to close turns this into a busy loop
+at whatever rate the event loop turns: the screen stays mid-resize, the
+resize never finishes, and the process sits on a core indefinitely.
+
+Retry on a real interval rather than as fast as possible, and give up after
+a bounded time rather than never. Fifty milliseconds and forty attempts is
+two seconds, generous for a dialog that is going to close at all. Finishing
+the resize with a stale dialog on screen is the better of the two outcomes
+once the budget is gone, so the giving-up path falls through rather than
+returning, and puts `mClosingWindows` and `mForceReject` back to rest so the
+next resize starts clean.
+
+The wait on `mDialogControlLock` in the same function is bounded while here.
+Every site that sets that flag clears it before returning, so the ceiling
+should not be reachable; it is bounded because an unbounded spin inside a
+screen locker is a hang with no way out for whoever is sitting in front of
+it.
+
+This matters more than its rarity suggests: a desktop resize while the
+screen is locked is exactly what a laptop does when its lid closes onto an
+external display, and anything that disables an output on lid close would
+make it the common case rather than the unusual one.
+
+### Testing
+
+**Not runtime-tested.** The trigger is a dialog that declines to close,
+which has not been reproduced here. The change is a bound on an otherwise
+unbounded retry and lock-wait; it alters no behaviour on the path where the
+dialog does close.
+
+---
+
+## PR 6 -- tdebase: `fix/directory-mime-default`
+
+**Title:** `konqueror: name the file manager as the default for inode/directory`
+
+An application outside TDE asking to open a folder gets Cervisia, which then
+reports that the folder is not a CVS folder. Anything using `xdg-open` or
+`gio` reaches it, so this is what GTK programs do when they offer to show a
+download in its folder.
+
+Nothing chose Cervisia. With no default recorded for a type, the choice
+falls to whatever sorts first in `mimeinfo.cache` among the desktop files
+claiming it:
+
+    inode/directory=tde-cervisia.desktop;tde-kfmclient_dir.desktop;
+
+Cervisia claims `inode/directory` because it is a Konqueror view for CVS
+working copies, and "cervisia" sorts before "kfmclient". That is the whole
+mechanism.
+
+Its claim is not wrong and cannot simply be dropped: Cervisia registers no
+service file of its own, so that `MimeType` line is how the KPart is
+registered, and removing it would take the CVS view out of Konqueror. Naming
+the file manager settles the question without touching Cervisia.
+
+Ship the defaults list under the name a TDE session reads,
+`tde-mimeapps.list`, so it applies when `XDG_CURRENT_DESKTOP` names TDE and
+leaves a machine running another desktop alone. It installs beside the
+application directories rather than inside `XDG_APPS_INSTALL_DIR` (which is
+`applications/tde`): the specification looks for the list in `applications/`
+itself.
+
+### Testing
+
+Verified by building into a staging prefix and putting it ahead in
+`XDG_DATA_DIRS`, with a config home of its own so no user setting could
+answer instead: the query returns the file manager with the staged tree
+present and Cervisia without it.
+
+---
+
+## PR 7 -- tdepowersave: the autosuspend cancel-on-activity fix
+
+**Title:** `feature: cancel the autosuspend countdown when the user is active again`
+
+**Branch note:** this currently sits on top of `feat/lid-panel-off`, sharing
+a branch with the lid work only by accident of development order. It is
+independent and should be extracted to its own
+`fix/autosuspend-cancel-on-activity` branch (off `master`, backported to
+`r14.1.x`) before submission.
+The change is the single commit "cancel the autosuspend countdown when the
+user is active again".
+
+The machine suspends after the screen is woken by a mouse move, with a
+countdown window that demands the Cancel button or it suspends anyway.
+
+The inactivity monitor fires `inactivityTimeExpired` and then stops -- the
+check does not rearm after emitting. `do_autosuspendWarn` shows the
+countdown, and from there nothing watches the X idle time, so moving the
+mouse or pressing a key does not reach the countdown at all. The only way to
+stop it was the Cancel button, which is exactly what someone is not reaching
+for in the second after their screen lights up.
+
+`autodimm` already solved "the user is active again": a one-second poll
+(`startCheckForActivity` / `pollActivity`) that emits `UserIsActiveAgain`
+when the idle time drops, used to re-brighten the display. That poll moves
+down into the shared `inactivity` base class, so `autosuspend` -- until now
+an empty subclass -- gets it too; `autodimm` is unchanged in behaviour, just
+relocated. `do_autosuspendWarn` calls `startCheckForActivity()` after showing
+the dialog, and `UserIsActiveAgain` is wired to close the countdown. Because
+the dialog is `WDestructiveClose`, closing it with time remaining emits
+`dialogClosed(true)`, which routes through the existing `do_autosuspend(true)`
+cancel path -- stop, do not suspend, restart monitoring -- exactly as the
+Cancel button does. The `countdown` pointer is nulled there so a late
+activity poll cannot close a dialog that has already gone.
+
+### Testing
+
+Built and installed on a live TDE 14.1.6 desktop and confirmed by use: with
+the autosuspend countdown showing, moving the mouse cancels it and the
+machine stays awake; leaving the machine idle still suspends as before.
+
+---
+
 ## A review comment for PR 47, same file
 
 Worth raising on `feat/idle-inhibition` while in `screen.cpp`. It adds
