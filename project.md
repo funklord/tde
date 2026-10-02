@@ -1449,9 +1449,25 @@ physical lid cycles, before this machine was retired:
   on a lid event, and the disable in the default run was ours.
 - **Light-only restore.** Lid open after the light-only close -> backlight
   climbed from 0 back to full (96000), exercising `m_savedLidBrightnessLevel`.
+- **Docked lock (`lockOnLidCloseWhenDocked`).** With it set and the action
+  off, a fresh-daemon first lid close brought the lock screen up on the
+  external while the internal stayed in display-off. So the dedicated docked
+  lock fires, independently of `performLidActionWhenDocked`.
 
-The `lidDisplayLightOnly` key was written for the test and removed after;
-the machine was left at defaults.
+**Two symptoms reported mid-test did not survive a clean run, recorded so
+they are not re-chased.** First, that the docked lock was gated by
+"perform the lid-close action, even when docked"; second, that the first
+lid close never locked. `handleLidEvent` couples neither -- the lock fires
+on `lockOnLidCloseWhenDocked` alone -- and the fresh-daemon first close
+above locked cleanly. Both reports came while several config keys and the
+blank/lock state were changing between closes, and `isBlanked` was seen to
+flip within seconds; they were test-churn, not code faults. The lazy
+`SCREENSAVER_STATUS` init in `screen::lockScreen()` was the suspected
+mechanism for a first-close miss and was tested for directly by restarting
+the daemon; it did not reproduce.
+
+The test keys (`lidDisplayLightOnly`, `lockOnLidCloseWhenDocked`) were
+written for the runs and removed after; the machine was left at defaults.
 
 ## Portability: the lid handling without systemd
 
@@ -1793,9 +1809,12 @@ the autosuspend countdown now cancelling when the mouse moves (`+lidfix14`,
 confirmed 2026-09-30), where before it demanded the Cancel button; and
 finally, on a two-display setup 2026-10-02, the **docked display-off** path
 -- lid close disables the internal output while the external stays lit, with
-no lock or suspend, the disable proven ours rather than the kernel's, and
-the light-only backlight restore working (see *What is and is not tested*
-under the display-off section for the method).
+no lock or suspend, the disable proven ours rather than the kernel's, the
+light-only backlight restore working, and the **docked lock**
+(`lockOnLidCloseWhenDocked`) bringing the lock screen up on the external
+while the internal stays off (see *What is and is not tested* under the
+display-off section for the method, and for two reported symptoms that
+turned out to be test-churn, not bugs).
 
 **Built and wired, not yet exercised live**, all single-display testable:
 the inhibit toggle skipping the idle suspend/dim and the lid-close
