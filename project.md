@@ -463,6 +463,40 @@ design, not a setting, and it is not started here without being asked for.
 per-machine dependency and of not being TDE's own. Left open for a
 deliberate decision.
 
+**The policy the holder wants, specified 2026-10-02.** The earlier text
+left the policy open; it is now decided, and it is a **mirror, not an
+extension**:
+
+- **External connected:** the framebuffer is the external's native
+  resolution, the external is primary and shows all of it, and the internal
+  panel mirrors the **top-left crop** of it at the internal's own native
+  mode. Both outputs share the origin; the larger framebuffer is what makes
+  the internal a crop rather than a scaled copy. So it is a true mirror at
+  the *external's* resolution, with the smaller laptop panel cropped -- not
+  a common-resolution mirror (which would letterbox or soften the external)
+  and not side-by-side extend.
+- **External disconnected:** fall back to the laptop's native resolution.
+
+The live recovery that realises the connected half, runtime-only and left
+behind by nothing, is the shape an implementation reproduces:
+
+    xrandr --output <ext> --mode <ext-native> --pos 0x0 --primary \
+           --output <int> --mode <int-native> --pos 0x0
+
+**Recorded as the holder's preference, not as "what other desktops do."**
+The holder stated mirror is the common default; measured against the live
+ones it is the other way -- GNOME, Plasma, macOS and Windows default a
+docked laptop to extend and offer mirror as a toggle. That does not change
+the decision, which is the holder's to make for TDE; it is noted so a future
+implementer does not "correct" the policy to extend believing that is the
+saner default. The policy to build is mirror-crop as above.
+
+This sharpens the open feature rather than closing it: the daemon that owns
+display policy across RandR events now has a concrete rule to apply on
+connect and on disconnect. What remains unbuildable-here is unchanged --
+the switching only exercises on a real connect/disconnect and across a
+reboot with the external present, which is the wall finding 8 opens with.
+
 **What was NOT done, deliberately:** no `autorandr` install, no
 `/etc/trinity/tdm/Xsetup` edit, no persisted `xrandr` -- those fix one
 machine, and the instruction was to fix TDE. The live `xrandr` used while
