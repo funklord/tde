@@ -1816,16 +1816,23 @@ while the internal stays off (see *What is and is not tested* under the
 display-off section for the method, and for two reported symptoms that
 turned out to be test-churn, not bugs).
 
-**Built and wired, not yet exercised live**, all single-display testable:
-the inhibit toggle skipping the idle suspend/dim and the lid-close
-(finding 11); the lock-on-lid combo mapping to behaviour on a non-docked
-machine; the netcfgd profile firing on a scheme switch (finding 10) --
-set a scheme's profile to `offline`, switch to it, and `ncfg profile get`
-should read `offline` where it now reads `no profile chosen`.
+The **netcfgd per-scheme profile (finding 10) is verified too, 2026-10-02**:
+with `ncfg` 0.1.0 present and its only profile `offline`, a scheme
+(`Powersave`) was armed with `NetworkProfile=offline`, and switching to it
+via `dcop tdepowersave tdepowersaveIface do_setScheme Powersave` flipped
+`ncfg profile get` from "no profile chosen" to "offline". So `do_setScheme`
+-> `do_setActiveScheme` -> `applyNetworkProfile` -> `ncfgProfileSet` works end
+to end. The test key was removed; `ncfg`'s runtime profile stays `offline`
+(it has no unset subcommand), a harmless runtime state, not a config.
 
-**Needs an external display, so unverified:** anything under finding 8 (the
-automatic mirror-crop policy, which is unbuilt). The docked display-off path
-that was here is now verified -- see above.
+**Built and wired, not yet exercised live** (what remains): the inhibit
+toggle skipping the *idle* suspend/dim -- its lid-close half is confirmed,
+the idle half would need ~5 min idle with a real suspend at stake; and the
+lock-on-lid combo on a genuinely non-docked machine (the external unplugged).
+
+**Needs an external display, so unverified:** only finding 8's *automatic*
+mirror-crop policy, which is unbuilt. Every built docked path -- display-off,
+light-only, docked lock -- is now verified above.
 
 `verify-fixes.sh` checks only the original three fixes; the combo,
 `hasLid`, the netcfgd page and the inhibit toggle are verified as above,
