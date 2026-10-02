@@ -1433,14 +1433,25 @@ would have blanked the external.
 
 ### What is and is not tested
 
-Built and installed as `+lidfix10`. The **alone** paths are testable on the
-single display this machine has now: inhibit + lid should darken the panel
-where before it stayed lit, and `lidDisplayLightOnly` should dim the
-backlight without touching the display. The **docked** path
-(`disableInternalPanel()` on lid close) still needs a second display, as the
-panel-off section above already records. Restore correctness (brightness
-level round-trip, DPMS scheme reset) is by construction from the recorded
-mode, not yet observed across a real lid cycle.
+Built and installed as `+lidfix10`. **Verified end to end 2026-10-02 on the
+real two-display setup** (external DP-1 3440x1440 + internal eDP-1), across
+physical lid cycles, before this machine was retired:
+
+- **Docked display-off (`disableInternalPanel()`).** Lid open, both outputs
+  live; lid close -> `eDP-1`'s RandR output disabled (no active mode, not
+  merely backlight-dark), `DP-1` stayed at 3440x1440, nothing locked
+  (`isBlanked` false) or suspended. Open -> `eDP-1` active again.
+- **The attribution was proven, not assumed.** At boot with the lid shut the
+  kernel brings `eDP-1` up disabled, so a lid-close output-disable could in
+  principle be the kernel rather than our code. The `lidDisplayLightOnly`
+  run settles it: with that set, lid close left `eDP-1`'s output **active**
+  and dropped the backlight to 0 -- so the kernel does not disable the output
+  on a lid event, and the disable in the default run was ours.
+- **Light-only restore.** Lid open after the light-only close -> backlight
+  climbed from 0 back to full (96000), exercising `m_savedLidBrightnessLevel`.
+
+The `lidDisplayLightOnly` key was written for the test and removed after;
+the machine was left at defaults.
 
 ## Portability: the lid handling without systemd
 
@@ -1779,7 +1790,12 @@ holder since: the `lidDisplayLightOnly` backlight-only checkbox
 (`+lidfix12`/`+lidfix13`, once its Apply signal was wired), ticking it and
 closing the lid dims the backlight without reconfiguring the display; and
 the autosuspend countdown now cancelling when the mouse moves (`+lidfix14`,
-confirmed 2026-09-30), where before it demanded the Cancel button.
+confirmed 2026-09-30), where before it demanded the Cancel button; and
+finally, on a two-display setup 2026-10-02, the **docked display-off** path
+-- lid close disables the internal output while the external stays lit, with
+no lock or suspend, the disable proven ours rather than the kernel's, and
+the light-only backlight restore working (see *What is and is not tested*
+under the display-off section for the method).
 
 **Built and wired, not yet exercised live**, all single-display testable:
 the inhibit toggle skipping the idle suspend/dim and the lid-close
@@ -1788,9 +1804,9 @@ machine; the netcfgd profile firing on a scheme switch (finding 10) --
 set a scheme's profile to `offline`, switch to it, and `ncfg profile get`
 should read `offline` where it now reads `no profile chosen`.
 
-**Needs an external display, so unverified:** the display-off **docked**
-path (`disableInternalPanel()` on lid close, external stays lit) and
-anything under finding 8.
+**Needs an external display, so unverified:** anything under finding 8 (the
+automatic mirror-crop policy, which is unbuilt). The docked display-off path
+that was here is now verified -- see above.
 
 `verify-fixes.sh` checks only the original three fixes; the combo,
 `hasLid`, the netcfgd page and the inhibit toggle are verified as above,
