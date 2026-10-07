@@ -1847,6 +1847,41 @@ not by that tool.
 - Whether the greeter-class fix belongs in `doPAMAuth()` or in tdm's
   separation of greeter and user PAM handles. The one-line form is obvious;
   whether it is right has not been established.
+- Which of the two `### What is and is not tested` headings keeps the
+  name. `project.md` carries it at line 1214, about `test/docked-detect/`,
+  and again at line 1434, about the `+lidfix10` build -- different
+  subjects under one heading, so whichever a reader finds, the other is
+  the one with the answer. Signalled from `claude-guidelines` 2026-10-07
+  rather than renamed, because which subject keeps the bare name is this
+  document's call and not a passing session's.
+
+  **It is invisible to this tree's own gate, which is the part worth
+  fixing first.** `make style` here runs `python3 tool/style_gate.py
+  check` only; the duplicate is reported by `docs` mode, which the target
+  does not run. Sixteen of the nineteen private trees run both halves,
+  and this is one of three that do not -- recorded as a convention
+  question in `claude-guidelines`' signal list, since the settled
+  inventory names `make style` without saying which modes it runs. Adding
+  `docs` to the target makes the finding above visible and is a one-line
+  change; the heading itself is the content decision.
+
+- Whether the `hooks:` target should ask git where the hooks live. It
+  installs straight into `.git/hooks/` with no guard, which is correct in
+  an ordinary clone and wrong in a linked worktree or a submodule
+  checkout, where `.git` is a regular file. `claude-guidelines`' entry of
+  2026-09-03 settled `git rev-parse --git-common-dir` for this across
+  thirteen trees, and names this exact third shape as "correct in a clone
+  and fails loudly in a worktree ... and still not right". This tree was
+  listed as private on 2026-09-15 (`86b70e3`), after that pass, so it
+  missed it rather than declined it -- and `kconfig_tree`, listed at the
+  same time, carries the settled form.
+
+  Both this and the `make style` item above are things `sync.py` cannot
+  carry: it spreads files, `Makefile` is not one of them, and so a tree
+  adopted after a Makefile convention was settled has no mechanism that
+  would ever tell it. `claude-guidelines`' 2026-09-17 handoff records
+  that shape as "a hand-adopted tree misses what sync does not carry";
+  this tree is its second instance.
 
 ## Corrected readings, kept so they are not repeated
 
