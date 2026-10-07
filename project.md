@@ -1851,19 +1851,27 @@ not by that tool.
   name. `project.md` carries it at line 1214, about `test/docked-detect/`,
   and again at line 1434, about the `+lidfix10` build -- different
   subjects under one heading, so whichever a reader finds, the other is
-  the one with the answer. Signalled from `claude-guidelines` 2026-10-07
+  the one with the answer. Raised from `claude-guidelines` 2026-10-07
   rather than renamed, because which subject keeps the bare name is this
   document's call and not a passing session's.
 
-  **It is invisible to this tree's own gate, which is the part worth
-  fixing first.** `make style` here runs `python3 tool/style_gate.py
-  check` only; the duplicate is reported by `docs` mode, which the target
-  does not run. Sixteen of the nineteen private trees run both halves,
-  and this is one of three that do not -- recorded as a convention
-  question in `claude-guidelines`' signal list, since the settled
-  inventory names `make style` without saying which modes it runs. Adding
-  `docs` to the target makes the finding above visible and is a one-line
-  change; the heading itself is the content decision.
+  **The gate here could not see it until 2026-10-07, and now can.**
+  `make style` ran `style_gate.py check` only, while the duplicate is a
+  `docs`-mode finding -- so this tree's own gate had no way to report a
+  fault this tree has. `docs` was added the same day as a `style-docs`
+  sub-target, the form every other tree uses: `style-source` passes 15
+  files and `style-docs` fails naming line 1434.
+
+  **So the gate is RED on one finding until the question above is
+  answered, and that is deliberate.** The `style-docs` recipe carries a
+  comment saying so, because `harmonization.md` notes that a red gate is
+  exactly when somebody reaches for an ignore rule -- and the ordinary
+  advice is to fix the finding before enabling the check, which was not
+  available here: the finding is a content decision belonging to this
+  document. Sixteen of the nineteen private trees ran both halves before
+  this change; the convention question of whether the inventory should
+  say so is `claude-guidelines`' signal list, since the settled table
+  names `make style` without naming its modes.
 
 - Whether the `hooks:` target should ask git where the hooks live. It
   installs straight into `.git/hooks/` with no guard, which is correct in

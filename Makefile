@@ -5,7 +5,7 @@
 GITEA  = https://mirror.git.trinitydesktop.org/gitea/TDE
 CLONES = tdebase tdepowersave
 
-.PHONY: help upstream style hooks
+.PHONY: help upstream style style-source style-docs hooks
 
 help:
 	@echo 'upstream  clone or fetch the TDE trees named in CLONES'
@@ -24,8 +24,18 @@ upstream:
 		fi; \
 	done
 
-style:
+style: style-source style-docs
+
+style-source:
 	python3 tool/style_gate.py check
+
+# project.md is authoritative, so it is held to the tree: a heading that
+# appears twice means whichever one you find, the other is the one with
+# the answer. Added 2026-10-07; it reports one finding today, which is
+# the first open question in project.md and is deliberately left for
+# this tree to answer rather than silenced here.
+style-docs:
+	python3 tool/style_gate.py docs
 
 hooks:
 	@for h in tool/hooks/*; do \
