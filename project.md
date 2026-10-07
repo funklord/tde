@@ -60,6 +60,23 @@ Set by the copyright holder 2026-09-06.
 **Develop on `master`, backport to `r14.1.x`.** Also set 2026-09-06, and it
 applies per repository since there are two.
 
+**Upstream's conventions govern upstream's code.** Set by the copyright
+holder 2026-10-07: TDE is an upstream project, so where its guidelines and
+the private-project guidelines conflict, TDE's win. That is a precedence
+rule, and for everything this project sends upstream it outranks the stack
+in `~/.claude/CLAUDE.md`.
+
+`code-style.md` already draws the line for style -- a patch follows TDE's
+`camelCase`, brace style and header layout, because a patch that reformats
+the code around it is one nobody can review. What the rule adds is that the
+same answer holds beyond style: commit-message shape, file naming, build
+conventions and the ASCII rule stop at the patch boundary too. What stays
+ours is what upstream never sees -- `project.md`, `code-style.md`, the
+`Makefile`, the `tool/` copies and the probes under `test/`. The gate is
+already built to that line: the clones are excluded by name in
+`.style-gate.toml`, and a `.patch` body matches neither suffix table, so it
+cannot read upstream code even when the clones are present.
+
 The branch layout is the same trap in both repos and is worth stating
 because getting it wrong makes a divergence look like new work:
 
@@ -1848,11 +1865,11 @@ not by that tool.
   separation of greeter and user PAM handles. The one-line form is obvious;
   whether it is right has not been established.
 - Which of the two `### What is and is not tested` headings keeps the
-  name. `project.md` carries it at line 1214, about `test/docked-detect/`,
-  and again at line 1434, about the `+lidfix10` build -- different
-  subjects under one heading, so whichever a reader finds, the other is
-  the one with the answer. Raised from `claude-guidelines` 2026-10-07
-  rather than renamed, because which subject keeps the bare name is this
+  name. `project.md` carries it once about `test/docked-detect/` and
+  again about the `+lidfix10` build -- different subjects under one
+  heading, so whichever a reader finds, the other is the one with the
+  answer. Raised from `claude-guidelines` 2026-10-07 rather than
+  renamed, because which subject keeps the bare name is this
   document's call and not a passing session's.
 
   **The gate here could not see it until 2026-10-07, and now can.**
@@ -1860,7 +1877,10 @@ not by that tool.
   `docs`-mode finding -- so this tree's own gate had no way to report a
   fault this tree has. `docs` was added the same day as a `style-docs`
   sub-target, the form every other tree uses: `style-source` passes 15
-  files and `style-docs` fails naming line 1434.
+  files and `style-docs` names the pair. The subjects are given rather
+  than the line numbers because this entry first cited lines 1214 and
+  1434 and both were stale within the hour, shifted by an insertion
+  earlier in the file.
 
   **So the gate is RED on one finding until the question above is
   answered, and that is deliberate.** The `style-docs` recipe carries a
