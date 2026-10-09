@@ -24,10 +24,11 @@ Each tdebase branch is a single commit, exported for both the master and
 the r14.1.x line. As with tdepowersave, the r141x side is the one built and
 installed here.
 
-Both are the same twelve commits -- the docked lid policy, the form-factor
+Both are the same thirteen commits -- the docked lid policy, the form-factor
 (`hasLid`) fix, the lock-mode combo, the per-scheme netcfgd profile, the
-inhibit toggle, the panel-off mechanism, and the display-off split with its
-backlight-only checkbox. The **r141x series is the authoritative one**: it
+inhibit toggle, the panel-off mechanism, the display-off split with its
+backlight-only checkbox, and the autosuspend countdown cancelling on
+activity. The **r141x series is the authoritative one**: it
 is what was built into the installed `+lidfix` packages and tested on the
 live desktop. The master twin was produced by cherry-pick and is
 content-identical (`git range-diff` agrees) but is **not build-verified**,
@@ -40,8 +41,13 @@ export for it.
 ## Re-exporting
 
     cd <tdepowersave clone>
-    git format-patch -12 --zero-commit --no-signature \
-        -o <this>/tdepowersave/feat-lid-panel-off-r141x feat/lid-panel-off-r141x
+    git format-patch --zero-commit --no-signature \
+        -o <this>/tdepowersave/feat-lid-panel-off-r141x \
+        origin/r14.1.x..feat/lid-panel-off-r141x
+
+The range names the branch's own commits rather than a count. The command
+said `-12` until the series grew to thirteen, and a stale count drops the
+newest commit from the export without any error.
 
 ## Applying
 
