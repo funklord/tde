@@ -16,6 +16,13 @@ It builds nothing of its own.
     tdebase/            upstream clone, not tracked here
     tdepowersave/       upstream clone, not tracked here
 
+**A bare `make` prints the targets and does nothing else.** There is no
+software here for an `all` to build -- the patches are built inside the
+upstream clones, by the recipe under *Building* -- so the default is
+`help`, which is the one target that is safe to type without knowing
+the tree: `upstream` reaches the network, `style` runs the gate, and
+`hooks` writes into `.git/hooks`.
+
 A TQt3 control-centre module and tray for netcfgd were written during this
 work and live in **netcfgd's** tree, at `adapter/netcfgd-tde/`, packaged as
 `netcfgd-trinity`. They are recorded there rather than here because they
