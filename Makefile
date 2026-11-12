@@ -5,7 +5,7 @@
 GITEA  = https://mirror.git.trinitydesktop.org/gitea/TDE
 CLONES = tdebase tdepowersave
 
-.PHONY: help upstream style style-source style-docs hooks
+.PHONY: help upstream style style-source style-tool style-docs hooks
 
 help:
 	@echo 'upstream  clone or fetch the TDE trees named in CLONES'
@@ -24,7 +24,15 @@ upstream:
 		fi; \
 	done
 
-style: style-source style-docs
+style: style-tool style-source style-docs
+
+# The style gate's own suite, run ahead of the gate's verdict. A checker
+# that has stopped inspecting anything passes exactly as loudly as one
+# that works, so its pass is worth reading only once its suite has.
+# tool/test_style_gate.py arrives beside tool/style_gate.py and was
+# carried here unrun until 2026-11-12, on the holder's word.
+style-tool:
+	python3 tool/test_style_gate.py
 
 style-source:
 	python3 tool/style_gate.py check
