@@ -1292,7 +1292,18 @@ Every site that sets the flag clears it before returning, so the ceiling
 should not be reachable; it is bounded because an unbounded spin inside a
 screen locker is a hang with no escape for whoever is sitting in front of
 it. Eight further such spins remain elsewhere in the file, four of them in
-the FIFO command handler that has no consumer.
+the FIFO command handler. **Finding 1's fix makes that handler run for the
+first time**, since the FIFOs could never be created before, so it was
+reviewed on 2026-11-12 rather than left as dormant. Every site that sets
+`mDialogControlLock` -- the resize finish, `doFunctionKeyBroadcast()`
+and the handler's own cases -- clears it within one synchronous call,
+and none runs an event loop while holding it. `closeCurrentWindow()`
+only calls `close()` or `closeDialogForced()`, and the info and query
+dialogs' `exec()` comes after the release. So on the main thread the
+handler's spins can never find the flag set. Delivered on the pipe
+thread instead, they wait at most for one of those short calls. Neither
+can hang the locker, and they are left as they are. Upstream's #829,
+reworking the pipe thread's shutdown, is in the same code.
 
 **Why this was done before the output-switching work**, rather than after:
 a desktop resize while the screen is locked is exactly what a laptop does
