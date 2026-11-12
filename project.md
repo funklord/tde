@@ -860,6 +860,22 @@ Also open, and relevant:
 
 None of these has been evaluated for correctness yet.
 
+**Re-measured 2026-11-12.** #779 and #47 are both still open and
+unmerged; they were last updated on 2026-09-29 and 2026-09-17. Five
+newer tdebase PRs touch the same ground. Every tdebase patch here was
+applied with `git am` on top of each, without conflict, and none of them
+supersedes ours:
+
+- **#829** -- *kdesktop_lock: make control pipe shutdown wakeable* (4
+  commits). It changes how the control-pipe thread stops, and not where
+  or how the FIFOs are created, so finding 1's fix is still needed and
+  sits beside it.
+- **#816** -- *Integrate TDE with systemd graphical sessions*. It touches
+  `starttde`, `CMakeLists.txt` and a systemd user target, not tdm, and
+  sets no session class. Finding 2 stays open under it.
+- **#830** (wait for lock readiness before suspending), **#832** and
+  **#833** -- small kdesktop_lock fixes, with no overlap in substance.
+
 ## What the stable branch already offers
 
 - **tdepowersave**: `r14.1.6..origin/r14.1.x` has **zero** non-translation
