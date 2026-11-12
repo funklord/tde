@@ -33,7 +33,13 @@ else
 	canlock=$(loginctl show-session "$sid" -p CanLock --value 2>/dev/null)
 	echo "        session $sid: Class=$class CanLock=$canlock"
 	[ "$class" = "user" ] && ok "Class is user" || bad "Class is $class, expected user"
-	[ "$canlock" = "yes" ] && ok "CanLock is yes" || bad "CanLock is $canlock, expected yes"
+	# elogind (Devuan, measured 255.17) has no CanLock property at all, so
+	# an empty answer is the login manager's silence, not the fault.
+	if [ -z "$canlock" ]; then
+		dunno "this login manager exposes no CanLock; Class is the check"
+	else
+		[ "$canlock" = "yes" ] && ok "CanLock is yes" || bad "CanLock is $canlock, expected yes"
+	fi
 fi
 
 echo "=== 2. kdesktop_lock: are the control FIFOs created? ==="
@@ -45,17 +51,23 @@ if [ "$found" -gt 0 ]; then
 else
 	dunno "none in $sock yet -- lock the screen once, then re-run"
 fi
-stale=$(grep -a -c 'unable to create control socket' ~/.xsession-errors 2>/dev/null || echo 0)
+# grep -c prints 0 itself when nothing matches, so no fallback: one
+# would print a second 0. Empty means the log is not there to read.
+stale=$(grep -a -c 'unable to create control socket' ~/.xsession-errors 2>/dev/null)
+stale=${stale:-"no log"}
 echo "        'unable to create control socket' in this session's log: $stale"
 echo "        (a count from before the new binary was installed is expected;"
 echo "         what matters is that it stops rising after a lock)"
 
 echo "=== 3. tdepowersave: is the docked setting present? ==="
-if grep -a -q 'ignoreLidCloseWhenDocked' /opt/trinity/bin/tdepowersave \
+# The series named this ignoreLidCloseWhenDocked until +lidfix4 split it
+# into lockOnLidCloseWhenDocked and performLidActionWhenDocked; checking
+# the old name failed against every build since.
+if grep -a -q 'lockOnLidCloseWhenDocked' /opt/trinity/bin/tdepowersave \
 	/opt/trinity/lib/libtdeinit_tdepowersave.so 2>/dev/null; then
-	ok "the installed binary knows ignoreLidCloseWhenDocked"
+	ok "the installed binary knows lockOnLidCloseWhenDocked"
 else
-	bad "installed tdepowersave has no ignoreLidCloseWhenDocked"
+	bad "installed tdepowersave has no lockOnLidCloseWhenDocked"
 fi
 echo "        connected outputs right now:"
 xrandr --query 2>/dev/null | grep ' connected' | awk '{print "          " $1}'
