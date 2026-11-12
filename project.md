@@ -428,11 +428,21 @@ hotplug reaches it only as TDE hardware-device events; on a `Backlight`
 event it queues `checkBrightness()` behind a 50 ms `singleShot`
 (`src/hardware.cpp:198`, `:328`).
 
-### 6. X BadWindow noise around every lock attempt
+### 6. X BadWindow noise, not tied to locking
 
-566 in one session, opcodes 20 `GetProperty` (459), 19 `DeleteProperty`
-(101), 2 `ChangeWindowAttributes` (78), 3 `GetWindowAttributes` (6), in
-bursts coinciding with the lock warnings. Cause not established.
+On the Dell: 566 in one session, opcodes 20 `GetProperty` (459), 19
+`DeleteProperty` (101), 2 `ChangeWindowAttributes` (78) and 3
+`GetWindowAttributes` (6), in bursts coinciding with the lock warnings.
+
+**On `ml350g6-01` (2026-11-12) the coincidence does not hold.** The log
+held 5629 BadWindow errors since boot on 2026-09-12, and **no** lock-socket
+warnings, so the errors happen without the lock failure they were seen
+beside. By opcode: 20 `GetProperty` 3248, 19 `DeleteProperty` 1472,
+15 `QueryTree` 856, 2 `ChangeWindowAttributes` 48, 18 `ChangeProperty` 5.
+The shape matches the Dell's: property traffic on windows that have
+already gone. `.xsession-errors` does not say which process emits them,
+so the next measurement is per process, not another count. Cause not
+established.
 
 ### 7. `tdelfeditor -e` strips GNU_RELRO from every TDE binary -- FIXED in libr
 
@@ -732,7 +742,12 @@ the one thing missing here, the trail having been two hours cold:
     stat -c%y /tmp/tdesocket-nabbe/tdeinit__0
     dcop | grep -c tdelauncher
 
-## Open: the USB-C display hang -- NOT fixed
+## Open: the USB-C display hang -- NOT fixed, hardware retired
+
+**The Dell this was reported on was retired by 2026-10-02**, and the
+current machine has neither USB-C display output nor a lid. Nothing below
+can be pursued until the hang is seen on hardware that is here. The
+entry is kept as the record of what was measured and ruled out.
 
 Reported by the copyright holder: an occasional hang when a USB-C display
 is connected or disconnected **while the lid is closed**; a visible screen
@@ -2070,6 +2085,9 @@ to end. The test key was removed; `ncfg`'s runtime profile stays `offline`
 toggle skipping the *idle* suspend/dim -- its lid-close half is confirmed,
 the idle half would need ~5 min idle with a real suspend at stake; and the
 lock-on-lid combo on a genuinely non-docked machine (the external unplugged).
+The lid half needs a lid, which `ml350g6-01` does not have. The idle half
+does not, so it could be exercised here, but only once the series is built
+and installed over the 14.2 preview.
 
 **Needs an external display, so unverified:** only finding 8's *automatic*
 mirror-crop policy, which is unbuilt. Every built docked path -- display-off,
