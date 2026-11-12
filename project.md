@@ -1760,6 +1760,17 @@ the server sent one. That omits an unknown value rather than reporting
 unconditionally. That was correct there only because it used the right
 key. The line arrived with that backport in `fd94618b` (2022).
 
+**The protocol premise is measured, not assumed (2026-11-12).** A private
+`sshd` (OpenSSH 10.0, `internal-sftp`, running as the user on a loopback
+port, from scratch) and a one-shot libssh 0.11.5 probe stat one file:
+
+    sftp version 3
+    flags 0x0000000f  CREATETIME bit clear
+    mtime 1794497238  createtime 0          # mtime matches stat(1)
+
+So against OpenSSH the old second atom was always 0, and the fix's guard
+leaves it out.
+
 **Compiles, not run.** The patched unit compiles to an object against
 the TDE 14.2 headers and the system libssh 0.11.5, and a sabotaged copy
 fails at the two changed identifiers. The mechanism is established from
