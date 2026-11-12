@@ -45,8 +45,21 @@ style-source:
 style-docs:
 	python3 tool/style_gate.py docs
 
+# Ask git where the hooks live: in a linked worktree or a submodule
+# checkout .git is a file, and .git/hooks/ does not exist.
 hooks:
-	@for h in tool/hooks/*; do \
-		install -m 755 "$$h" ".git/hooks/$$(basename $$h)" && \
-		echo "installed $$(basename $$h)"; \
+	@if ! command -v git >/dev/null 2>&1; then \
+		echo "hooks: git is not installed, so there is nowhere to install to." >&2; \
+		exit 1; \
+	fi; \
+	dir=$$(git rev-parse --git-common-dir 2>/dev/null); \
+	if [ -z "$$dir" ]; then \
+		echo "hooks: not a git repository, so there is nowhere to install to." >&2; \
+		exit 1; \
+	fi; \
+	set -e; \
+	mkdir -p "$$dir/hooks"; \
+	for h in tool/hooks/*; do \
+		install -m 0755 "$$h" "$$dir/hooks/$$(basename $$h)"; \
+		echo "hooks: $$(basename $$h) installed from tool/hooks/ into $$dir/hooks/"; \
 	done

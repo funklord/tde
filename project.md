@@ -1953,23 +1953,14 @@ not by that tool.
   say so is `claude-guidelines`' signal list, since the settled table
   names `make style` without naming its modes.
 
-- Whether the `hooks:` target should ask git where the hooks live. It
-  installs straight into `.git/hooks/` with no guard, which is correct in
-  an ordinary clone and wrong in a linked worktree or a submodule
-  checkout, where `.git` is a regular file. `claude-guidelines`' entry of
-  2026-09-03 settled `git rev-parse --git-common-dir` for this across
-  thirteen trees, and names this exact third shape as "correct in a clone
-  and fails loudly in a worktree ... and still not right". This tree was
-  listed as private on 2026-09-15 (`86b70e3`), after that pass, so it
-  missed it rather than declined it -- and `kconfig_tree`, listed at the
-  same time, carries the settled form.
-
-  Both this and the `make style` item above are things `sync.py` cannot
-  carry: it spreads files, `Makefile` is not one of them, and so a tree
-  adopted after a Makefile convention was settled has no mechanism that
-  would ever tell it. `claude-guidelines`' 2026-09-17 handoff records
-  that shape as "a hand-adopted tree misses what sync does not carry";
-  this tree is its second instance.
+- Whether the `hooks:` target should ask git where the hooks live.
+  **Settled 2026-11-12: it does**, in the form `claude-guidelines` settled
+  on 2026-09-03 (`git rev-parse --git-common-dir`, with git's absence and
+  a non-repository each named). The old recipe was measured failing in a
+  linked worktree (`.git/hooks/commit-msg: Not a directory`), and the new
+  one installs into the common directory from the same worktree. This
+  tree missed that pass because it was listed as private after it, and
+  `sync.py` spreads files, not Makefile recipes.
 
 ## Corrected readings, kept so they are not repeated
 
