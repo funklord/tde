@@ -1792,6 +1792,7 @@ which must fail at exactly that name. Results, all on `master`:
     kdesktop/lock/lockprocess.cpp    FIFO, resize      compile, each
     tdepowersave, 7 units            13-commit series  compile, after a fix
     tdepowersave.cpp                 inhibit, alone    compiles
+    tdm/backend/client.c             session class     compiles, USE_PAM on
 
 **It found a real defect.** The master tdepowersave series was made by
 cherry-picking from `r14.1.x`, and 0007 (the netcfgd profile) brought in
@@ -1803,10 +1804,16 @@ in exactly those two lines. So the master series would have broken the
 build. Nothing else had looked, because master could not be built where
 the series was made.
 
-**Not reached:** tdm's `client.c`, whose change is inside `#ifdef
-USE_PAM`, because PAM headers are not installed either. Nor anything on
-the `r14.1.x` line, whose code does not compile against 14.2 headers by
-design. Those series were built on the Dell.
+tdm's `client.c` needed two more things: `libpam0g-dev` the same way
+(`apt-get download`, hash checked against apt's record), and `config.ci`,
+which `tdm/confproc.pl` generates from `config.def`. Its fix sits inside
+`#ifdef USE_PAM`, the block a default build skips (finding 2's "build
+that proved nothing"). So the sabotaged copy is what shows that block
+was compiled: it failed at the patched line.
+
+**Not reached:** anything on the `r14.1.x` line, whose code does not
+compile against 14.2 headers by design. Those series were built on the
+Dell. Nothing here has been linked or run.
 
 ## Requested: Konqueror accepting XDS drops -- not started
 
