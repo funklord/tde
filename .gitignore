@@ -23,3 +23,6 @@ __pycache__/
 # Built by test/docked-detect/Makefile.
 /test/docked-detect/probe
 /test/docked-detect/cc.log
+
+# The /go work file. Session state, never committed.
+/.claude/go.md
