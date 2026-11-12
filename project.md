@@ -16,6 +16,7 @@ It builds nothing of its own.
     tdebase/            upstream clone, not tracked here
     tdepowersave/       upstream clone, not tracked here
     tdelibs/            upstream clone, not tracked here
+    libr/               upstream clone, not tracked here
 
 **A bare `make` prints the targets and does nothing else.** There is no
 software here for an `all` to build -- the patches are built inside the
@@ -431,7 +432,7 @@ event it queues `checkBrightness()` behind a 50 ms `singleShot`
 (101), 2 `ChangeWindowAttributes` (78), 3 `GetWindowAttributes` (6), in
 bursts coinciding with the lock warnings. Cause not established.
 
-### 7. `tdelfeditor -e` strips GNU_RELRO from every TDE binary
+### 7. `tdelfeditor -e` strips GNU_RELRO from every TDE binary -- FIXED in libr
 
 Found while packaging a TQt3 front end for netcfgd, where lintian reported
 `hardening-no-relro` on a binary whose link line demonstrably carried
@@ -469,8 +470,49 @@ measure the distribution applies by default, and **no packaging can put it
 back**: the flag is honoured at link time and destroyed afterwards. Passing
 it is still right, so that a fixed `tdelfeditor` takes effect for free.
 
-Not reported upstream. It belongs to tdelibs and its cmake modules rather
-than to tdebase, so it is a different tracker from findings 1 to 6.
+**The fault is in libr, not in tdelfeditor or the cmake modules -- FIXED
+and tested 2026-11-12.** Exported to
+`patch/libr/fix-keep-relro-and-symbols{,-r141x}/`, two commits, not
+submitted. tdelfeditor hands the rewrite to libr (`libr_open`,
+`libr_close`), and libr does it with libbfd. Still present on stock 14.2:
+`tdelfeditor -e` on a copy of `/usr/bin/ls` dropped the segment even
+while reporting "resource section not found".
+
+bfd copies the input's program headers only while every section inside
+a segment keeps its flags (`copy_private_bfd_data`, bfd/elf.c:8268 in
+2.44). Otherwise it rebuilds them, and the rebuild turns `PT_GNU_RELRO`
+into `PT_NULL` (elf.c:7504). libr created every output section with
+`flags | SEC_LINKER_CREATED`, so it always took the rebuild. objcopy
+confirms the bfd half independently, over the same libbfd. A plain copy
+keeps RELRO (1). Changing the flags of `.data`, which is in a segment,
+drops it (0). Changing a section in no segment keeps it (1).
+
+**A second libr bug came out of the same test.** `setup_sections()` set
+each section's `output_offset` to its address. bfd adds the address
+again when writing `.symtab`, so every static symbol in a rewritten file
+was wrong: 25 of 25 moved in a test binary, 14 to exactly double. gdb
+then answers `No symbol matches $pc`. `.dynsym` is untouched, which is
+why linking never broke and why nobody noticed. Debug symbols and
+backtraces are what it cost.
+
+**How it was tested, without TDE's build.** libr is plain C. Its six
+sources were compiled directly against `binutils-dev` 2.44-3, which was
+fetched with `apt-get download` and unpacked into scratch, and linked
+against the system libbfd. A one-shot driver clears or writes a resource
+the way tdelfeditor does. Stock libr, built the same way, was the
+control, and it reproduced the loss. The matrix was four targets
+(stripped PIE `ls`, a `-z relro -z now` binary with symbols, `libz.so.1`,
+and TDE's `konsole` with its `.metadata_*` resources) times clear and
+write. With both fixes, every output matches its input in program
+headers, sections, `.symtab` and `.dynsym`, apart from the written
+resource. Resources read back, the programs run or load, and gdb
+resolves `main`. The committed `libr-bfd.c` is byte-identical to the
+tested file on both lines.
+
+**What it does not reach:** a full TDE package build through tdelfeditor
+itself, and armhf, where `.ARM.attributes` was once special-cased.
+Passing the input flags unchanged is what that special case already did,
+so armhf now gets the same treatment rather than a new one.
 
 ### 8. No display arrangement persistence or hotplug policy
 

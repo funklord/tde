@@ -25,6 +25,9 @@ changes, re-export it rather than editing the patches by hand.
     tdelibs/fix-formfactor-dmi-chassis{,-r141x}/ form factor from the SMBIOS
                                                  chassis type (not built)
 
+    libr/fix-keep-relro-and-symbols{,-r141x}/    RELRO and .symtab survive a
+                                                 libr rewrite (built, tested)
+
 Each tdebase branch is a single commit, exported for both the master and
 the r14.1.x line. As with tdepowersave, the r141x side is the one built and
 installed here.

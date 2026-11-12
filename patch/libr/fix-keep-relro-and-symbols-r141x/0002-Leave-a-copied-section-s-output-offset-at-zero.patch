@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Thu, 12 Nov 2026 16:13:33 +0100
+Subject: [PATCH 2/2] Leave a copied section's output offset at zero
+
+setup_sections() set each input section's output_offset to the
+section's address. The output offset is the input section's position
+within its output section, which is the same section here, so it is
+zero. bfd adds the output section's address when it writes the symbol
+table, so the address was counted twice. Every .symtab value in a file
+libr rewrote was wrong, most of them exactly double. A debugger then
+cannot name the function it is stopped in:
+
+    (gdb) info symbol $pc
+    No symbol matches $pc.
+
+The dynamic symbol table is not affected, so linking and loading were
+never broken. That is why this has gone unseen. Debug symbols and
+backtraces are what suffer.
+
+Set it to zero, as objcopy does. Tested as for the previous change: a
+rewritten file's .symtab, .dynsym, sections and program headers match
+the input, and gdb resolves main in it.
+---
+ src/libr-bfd.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/libr-bfd.c b/src/libr-bfd.c
+index f4e46b9..8a47e14 100644
+--- a/src/libr-bfd.c
++++ b/src/libr-bfd.c
+@@ -233,7 +233,11 @@ int setup_sections(bfd *ihandle, bfd *ohandle)
+ 		}
+ 		oscn->entsize = iscn->entsize;
+ 		iscn->output_section = oscn;
+-		iscn->output_offset = vma;
++		/* The offset of the input section within its output section,
++		 * which is the same section here: zero, as objcopy has it. The
++		 * section's address was being added a second time, so every
++		 * .symtab value in a rewritten file was wrong. */
++		iscn->output_offset = 0;
+ 		if(
+ 			#ifdef HAVE_BFD_2_45
+ 			!bfd_copy_private_section_data(ihandle, iscn, ohandle, oscn, NULL)

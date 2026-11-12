@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Thu, 12 Nov 2026 16:13:33 +0100
+Subject: [PATCH 1/2] Keep section flags when copying, so the RELRO segment
+ survives
+
+libr created every output section with the input's flags plus
+SEC_LINKER_CREATED. bfd copies the input's program headers only while
+every section inside a segment keeps its flags (copy_private_bfd_data
+in bfd/elf.c). Otherwise it rebuilds them, and the rebuild drops
+PT_GNU_RELRO (rewrite_elf_program_header). So every file libr wrote
+lost its RELRO segment. Because tdelfeditor runs on every binary and
+library TDE builds, no TDE binary has RELRO, although the linker was
+asked for it:
+
+    readelf -lW /opt/trinity/bin/konsole | grep -c GNU_RELRO    # 0
+    readelf -lW /usr/bin/ls | grep -c GNU_RELRO                 # 1
+
+objcopy, over the same libbfd, keeps the segment. It also drops it once
+the flags of a section inside a segment are changed, and keeps it when
+the changed section lies in no segment.
+
+Create the output sections with the input's flags exactly. That is what
+objcopy does, and what was already done for .ARM.attributes, whose
+section type the extra flag also lost.
+
+Tested with binutils 2.44 on an executable, a PIE, a shared library and
+a TDE binary carrying libr resources, both clearing and writing a
+resource. Each output keeps GNU_RELRO, the program headers and section
+table match the input apart from the resource section, written
+resources read back, and the programs run or load.
+---
+ src/libr-bfd.c | 20 +++++++-------------
+ 1 file changed, 7 insertions(+), 13 deletions(-)
+
+diff --git a/src/libr-bfd.c b/src/libr-bfd.c
+index b472543..f4e46b9 100644
+--- a/src/libr-bfd.c
++++ b/src/libr-bfd.c
+@@ -180,19 +180,13 @@ int setup_sections(bfd *ihandle, bfd *ohandle)
+ 		{
+ 			continue; /* Section has been marked for deletion */
+ 		}
+-		/* Use SEC_LINKER_CREATED to ask the libbfd backend to take care of configuring the section */
+-
+-		// Keep the ARM_ATTRIBUTES section type intact on armhf systems
+-		// If this is not done, readelf -A will not print any architecture information for the modified library,
+-		// and ldd will report that the library cannot be found
+-		if (strcmp(iscn->name, ".ARM.attributes") == 0)
+-		{
+-			oscn = bfd_make_section_anyway_with_flags(ohandle, iscn->name, iscn->flags);
+-		}
+-		else
+-		{
+-			oscn = bfd_make_section_anyway_with_flags(ohandle, iscn->name, iscn->flags | SEC_LINKER_CREATED);
+-		}
++		/* Keep the input's flags exactly. bfd copies the input's program
++		 * headers only while every section inside a segment keeps its
++		 * flags; otherwise it rebuilds them, and the rebuild drops
++		 * PT_GNU_RELRO. Adding SEC_LINKER_CREATED here stripped RELRO
++		 * from every file libr wrote, and lost .ARM.attributes' section
++		 * type on armhf, which is why that section was once exempted. */
++		oscn = bfd_make_section_anyway_with_flags(ohandle, iscn->name, iscn->flags);
+ 		if(oscn == NULL)
+ 		{
+ 			printf("failed to create out section: %s\n", bfd_errmsg(bfd_get_error()));

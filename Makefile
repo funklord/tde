@@ -3,7 +3,7 @@
 # `upstream`, which fetches the TDE trees the patches are written against.
 
 GITEA  = https://mirror.git.trinitydesktop.org/gitea/TDE
-CLONES = tdebase tdepowersave tdelibs
+CLONES = tdebase tdepowersave tdelibs libr
 
 .PHONY: help upstream style style-source style-tool style-docs hooks
 

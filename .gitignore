@@ -3,6 +3,7 @@
 /tdebase/
 /tdepowersave/
 /tdelibs/
+/libr/
 
 # Build output and staging prefixes. Never installed over /opt/trinity.
 /build/
