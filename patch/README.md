@@ -94,4 +94,6 @@ newest commit from the export without any error.
 ## Before these go upstream
 
 Each commit needs a `Signed-off-by:` (TDE carries the DCO); that line is the
-author's to add and is not in the patches. See `../pr-descriptions.md`.
+author's to add. The series exported up to 2026-10-01 carry it; the sftp,
+tdelibs and libr series written 2026-11-12 do not. See
+`../pr-descriptions.md`.

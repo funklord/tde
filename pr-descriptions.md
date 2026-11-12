@@ -2,11 +2,17 @@
 
 Ready to paste into `mirror.git.trinitydesktop.org`. One per branch pair.
 
-**Before submitting**, add your own `Signed-off-by:` -- TDE carries the DCO
-and that line is a statement about provenance that only its author can
-make:
+**Before submitting**, check each commit carries your `Signed-off-by:` --
+TDE carries the DCO and that line is a statement about provenance that only
+its author can make. PRs 1 to 7 carry it since the re-export of
+2026-09-26. **PRs 8, 9 and 10, written 2026-11-12, do not**, and need it
+added:
 
     git commit --amend -s          # on each branch, master and r14.1.x
+
+PR 12's commit is 0008 re-anchored onto stock `master` (see its note), and
+it carries 0008's sign-off over unchanged. Confirm that is still yours to
+give for the re-anchored form.
 
 Each fix is developed on `master` and backported to `r14.1.x`; the
 diffstats match, which is what says the backport changed nothing. Whether
@@ -263,10 +269,11 @@ backlight-only checkbox and its signal fix -- are the whole of this PR. The
 underlying `feat/lid-docked` has itself grown since PR 3 was written (the
 docked policy is now configurable as two independent settings rather than
 one `ignoreLidCloseWhenDocked` flag, plus the form-factor/`hasLid` fix and
-the lock-mode combo); PR 3's description wants refreshing before that branch
-goes up, and other independent features on it -- the inhibit toggle, the
-per-scheme netcfgd profile -- deserve their own PRs rather than riding this
-stack.
+the lock-mode combo). PR 3's description wants refreshing before that branch
+goes up. The inhibit toggle and the netcfgd profile are now PRs 12 and 11.
+**This PR needs PR 12 beneath it as well as PR 3**: its display-off step
+sits ahead of the inhibit gate, and 0009-0012 do not apply without 0008.
+They do apply without the netcfgd profile.
 
 ---
 
@@ -354,13 +361,10 @@ present and Cervisia without it.
 
 **Title:** `feature: cancel the autosuspend countdown when the user is active again`
 
-**Branch note:** this currently sits on top of `feat/lid-panel-off`, sharing
-a branch with the lid work only by accident of development order. It is
-independent and should be extracted to its own
-`fix/autosuspend-cancel-on-activity` branch (off `master`, backported to
-`r14.1.x`) before submission.
-The change is the single commit "cancel the autosuspend countdown when the
-user is active again".
+**Branch note:** it shares a branch with the lid work only by accident of
+development order. Measured 2026-11-12, the single commit (0013) applies by
+itself to both `master` and `r14.1.x`, so it goes up as its own
+`fix/autosuspend-cancel-on-activity` branch.
 
 The machine suspends after the screen is woken by a mouse move, with a
 countdown window that demands the Cancel button or it suspends anyway.
@@ -390,6 +394,166 @@ activity poll cannot close a dialog that has already gone.
 Built and installed on a live TDE 14.1.6 desktop and confirmed by use: with
 the autosuspend countdown showing, moving the mouse cancels it and the
 machine stays awake; leaving the machine idle still suspends as before.
+
+---
+
+## PR 8 -- tdebase: `fix/sftp-mtime`
+
+**Title:** `tdeioslave/sftp: report the creation time as a creation time`
+
+Every file copied over sftp gets a modification time of 1 January 1970.
+The content is right; only the time is wrong. file:// and fish:// copies
+keep theirs. Reproduced against stock OpenSSH with a key login:
+
+    kfmclient copy sftp://user@127.0.0.1:2299/tmp/x/hello.txt file:///tmp/got/
+    stat -c %y /tmp/got/hello.txt      # 1970-01-01 01:00:00 CET
+
+`stat()` and `listDir()` append the server's creation time under
+`UDS_MODIFICATION_TIME`, directly after the real modification time. The
+copy job (`tdeio/job.cpp`) walks the entry and assigns `info.mtime` on
+every matching atom, so the last one wins. OpenSSH speaks SFTP version 3,
+which has no creation time, so libssh leaves `createtime` at zero.
+
+Report it as `UDS_CREATION_TIME`, which the copy job already reads, and
+only when the server sent one (`SSH_FILEXFER_ATTR_CREATETIME`). An
+unknown creation time is better left out than reported as 1970. The line
+came in with the backported slave in `fd94618b`.
+
+### Testing
+
+Compiles against the 14.2 headers and libssh 0.11.5; a deliberately broken
+copy fails at the changed identifiers. **Not yet run**: the reproduction
+against a built slave is what confirms it.
+
+---
+
+## PR 9 -- tdelibs: `fix/formfactor-dmi-chassis`
+
+**Title:** `tdehw: take the form factor from the SMBIOS chassis type`
+
+`TDERootSystemDevice::formFactor()` is a guess: Laptop if a backlight
+device is already listed when the root device is classified, Desktop
+otherwise. On a Dell Latitude 5430 -- a notebook, SMBIOS chassis type 10,
+with an `intel_backlight` -- it reports Desktop. Anything keyed on it
+treats the laptop as a desktop; tdepowersave hid every lid-close setting
+because of it.
+
+The firmware already says what the machine is, and the kernel exposes it
+world-readable in `/sys/class/dmi/id/chassis_type`. Map it to Desktop,
+Laptop or Server, grouping the types as systemd-hostnamed does (tablets,
+convertibles and detachables count as laptops, having a battery and
+usually a lid). Fall back to the backlight guess only where the firmware
+says nothing useful.
+
+The two consumers were checked: the hardware manager's properties dialog
+already displays every value including Server, and tdepowersave tests for
+Laptop. Nothing tests for Desktop, so a server newly reported as Server
+loses nothing.
+
+### Testing
+
+Compiles against the 14.2 headers; a deliberately broken copy fails at
+both marked lines. **Not yet run.** On a tower (chassis 7) it should read
+Desktop as before; on a notebook, Laptop.
+
+---
+
+## PR 10 -- libr: `fix/keep-relro-and-symbols`
+
+**Title:** two commits -- `Keep section flags when copying, so the RELRO
+segment survives` and `Leave a copied section's output offset at zero`
+
+No TDE binary has a `GNU_RELRO` segment, though the linker is asked for
+one, because `tdelfeditor` runs on every binary and library TDE builds,
+and every file libr rewrites loses it:
+
+    readelf -lW /opt/trinity/bin/konsole | grep -c GNU_RELRO    # 0
+    readelf -lW /usr/bin/ls | grep -c GNU_RELRO                 # 1
+
+libr creates each output section with the input's flags plus
+`SEC_LINKER_CREATED`. bfd copies the input's program headers only while
+every section inside a segment keeps its flags (`copy_private_bfd_data`),
+and otherwise rebuilds them, dropping `PT_GNU_RELRO`
+(`rewrite_elf_program_header`). objcopy over the same libbfd shows both
+halves: a plain copy keeps RELRO; changing the flags of an in-segment
+section drops it. The first commit passes the input's flags unchanged, as
+objcopy does and as libr already did for `.ARM.attributes`.
+
+The second fixes what the same test found: `setup_sections()` set each
+section's `output_offset` to its address, which bfd adds a second time
+when writing `.symtab`. Every static symbol in a rewritten file was wrong,
+most exactly doubled, and gdb could not name the function at `$pc`.
+`.dynsym` was unaffected, which is why linking never broke.
+
+### Testing
+
+Built from source against binutils 2.44, with stock libr as the control
+that reproduces the loss. Over a stripped PIE, a `-z relro -z now` binary
+with symbols, a shared library and a TDE binary carrying libr resources,
+each cleared and written: every output keeps `GNU_RELRO`, matches its input
+in program headers, sections, `.symtab` and `.dynsym` apart from the
+written resource, reads its resources back, and runs or loads. Not run
+through a full TDE package build, and not on armhf.
+
+---
+
+## PR 11 -- tdepowersave: `feat/netcfgd-profile`
+
+**Title:** `feature: a per-scheme netcfgd network profile, detected not
+linked`
+
+A power scheme can name a netcfgd profile to switch to when it activates,
+so a battery-saving scheme can also trim the network. netcfgd decides what
+the profile does; tdepowersave only names which profile goes with which
+scheme.
+
+Nothing links netcfgd. `findExe("ncfg")` decides whether the feature
+exists at all; `ncfg profile list` fills the combo and `ncfg profile set`
+switches, run without a shell so a configured name cannot be interpreted.
+The "Networking" page in the per-scheme toolbox appears only when ncfg is
+found. The choice is stored by profile name, so it survives the list
+changing, and an unknown name falls back to not switching. Switching is
+silent, since schemes flip on every AC/battery change; a failure is a text
+line on the page, cleared on the next success.
+
+Whether upstream wants an integration with one particular network tool is
+upstream's call; it costs nothing on a machine without it.
+
+### Testing
+
+Verified on a live TDE 14.1.6 desktop: with ncfg present, switching to a
+scheme armed with a profile changed `ncfg profile get` to that profile. The
+commit applies alone to `master` and `r14.1.x`, and compiles on `master`
+(its `r14.1.x` include names were corrected for `master` on 2026-11-12).
+
+---
+
+## PR 12 -- tdepowersave: `feat/inhibit-toggle`
+
+**Title:** `feature: a tray toggle to temporarily inhibit power management`
+
+A checkable tray item, "Do Not Suspend or Lock the Screen", that while on
+stops inactivity from suspending or dimming and makes closing the lid do
+nothing. It gates at the action points -- `do_autosuspendWarn`,
+`do_downDimm` and the lid-close branch of `handleLidEvent` -- rather than
+tearing down timers, so the paths that would act just return.
+
+Manual suspend and hibernate from the same menu and the power buttons still
+work; a critical battery is deliberately left to act. Runtime only, so
+"temporary" means until switched off or the session ends. A passive popup
+confirms each toggle, since this is a deliberate click.
+
+**Branch note:** developed on top of the docked-lid work, whose comment its
+lid hunk was anchored on. The exported version is re-anchored on stock's
+`// handle screen lock`; its added lines are identical to the original's.
+
+### Testing
+
+The lid-close half was verified on a live TDE 14.1.6 desktop: with the
+toggle on, closing the lid neither locked nor suspended the machine. That
+build also carried PR 4, so the panel itself still switched off. The idle half is
+built and wired but not exercised live. The standalone commit compiles on
+`master`.
 
 ---
 
