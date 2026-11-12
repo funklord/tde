@@ -22,6 +22,9 @@ changes, re-export it rather than editing the patches by hand.
     tdebase/fix-sftp-mtime{,-r141x}/             sftp copies keep their mtime
                                                  (not built: see project.md)
 
+    tdelibs/fix-formfactor-dmi-chassis{,-r141x}/ form factor from the SMBIOS
+                                                 chassis type (not built)
+
 Each tdebase branch is a single commit, exported for both the master and
 the r14.1.x line. As with tdepowersave, the r141x side is the one built and
 installed here.

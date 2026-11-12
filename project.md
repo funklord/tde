@@ -15,6 +15,7 @@ It builds nothing of its own.
     tool/               the shared style gate and git hooks
     tdebase/            upstream clone, not tracked here
     tdepowersave/       upstream clone, not tracked here
+    tdelibs/            upstream clone, not tracked here
 
 **A bare `make` prints the targets and does nothing else.** There is no
 software here for an `all` to build -- the patches are built inside the
@@ -564,8 +565,7 @@ is false, and it is false here.
 Measured, not inferred. `isLaptop()` is TDE's hardware layer reporting
 `TDERootSystemDevice::formFactor()`, and a probe linked against `tdehw`
 returns **`formFactor=1` (Desktop)** on a Dell Latitude 5430 whose DMI
-chassis type is **10 (Notebook)** -- so the layer does not map that
-chassis type to Laptop. The same probe finds **one `ACPILidSwitch`
+chassis type is **10 (Notebook)**. The same probe finds **one `ACPILidSwitch`
 device**, so the lid is plainly there; TDE just does not call the machine
 a laptop.
 
@@ -580,11 +580,24 @@ from the ACPI lid device tdepowersave already connects to) rather than on
 the form factor. `+lidfix5`. This restores the stock "Lock screen on lid
 close" checkbox too, not only the new ones.
 
-**The root cause is one layer down and is not fixed here.** The chassis-10
-gap belongs to tdelibs' `TDERootSystemDevice::formFactor()`, and anything
-else keying UI on `isLaptop()` inherits it. That is a separate tdelibs
-report, not made yet, and it is a different tracker from tdebase and from
-tdepowersave.
+**The root cause is one layer down, in tdelibs -- FIXED, not built
+(2026-11-12).** This entry used to say the layer "does not map that
+chassis type". That was wrong: tdelibs never reads the chassis type at
+all. `tdehardwaredevices.cpp` sets the root device to Laptop only if a
+`Backlight` device is already listed when it is classified, and Desktop
+otherwise. The Dell had `intel_backlight` and still came out Desktop, so
+the guess failed even on its own terms. Whether that was enumeration
+order was not established. The fix sidesteps the question:
+`fix/formfactor-dmi-chassis{,-r141x}` reads
+`/sys/class/dmi/id/chassis_type` (world-readable) and maps it to Desktop,
+Laptop or Server, grouping the types as systemd-hostnamed does. The
+backlight guess is kept only for firmware that says nothing. Exported to
+`patch/tdelibs/`. Its only consumers are the hardware manager's dialog,
+which already shows Server, and tdepowersave's `isLaptop()`. **Not
+compiled**: no TDE or TQt development headers are installed here. Once
+it is built, this tower (chassis 7) should read Desktop, as it does now,
+and a notebook Laptop. tdepowersave's `hasLid()` gate stays right either
+way.
 
 The process lesson is finding 4's, sharpened: the first "it is definitely
 there" rested on a standalone render of the uic **base** dialog, which

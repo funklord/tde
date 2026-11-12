@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Thu, 12 Nov 2026 16:07:23 +0100
+Subject: [PATCH] tdehw: take the form factor from the SMBIOS chassis type
+
+The root device's form factor was a guess: Laptop if a backlight device
+was already listed, Desktop otherwise. On a Dell Latitude 5430, a
+notebook (chassis type 10) with an intel_backlight, it came out as
+Desktop, because the backlight is not reliably enumerated by the time
+the root device is classified. Anything keyed on it then treats the
+laptop as a desktop. tdepowersave hides every lid-close setting when
+isLaptop() is false.
+
+The firmware already says what the machine is, and the kernel exposes
+it world-readable in /sys/class/dmi/id/chassis_type. Map that to
+Desktop, Laptop or Server, grouping the SMBIOS types as
+systemd-hostnamed does. Tablets, convertibles and detachables count as
+laptops, since they carry a battery and usually a lid. Fall back to
+the backlight guess only where the firmware reports nothing useful.
+
+Two consumers were checked: the hardware manager's properties dialog,
+which already displays every value including Server, and tdepowersave's
+isLaptop(). Nothing tests for Desktop, so a server now reported as
+Server loses nothing.
+---
+ tdecore/tdehw/tdehardwaredevices.cpp | 52 +++++++++++++++++++++++++---
+ 1 file changed, 47 insertions(+), 5 deletions(-)
+
+diff --git a/tdecore/tdehw/tdehardwaredevices.cpp b/tdecore/tdehw/tdehardwaredevices.cpp
+index 7793c6e9..0275bd16 100644
+--- a/tdecore/tdehw/tdehardwaredevices.cpp
++++ b/tdecore/tdehw/tdehardwaredevices.cpp
+@@ -3371,11 +3371,53 @@ void TDEHardwareDevices::updateExistingDeviceInformation(TDEGenericDevice *devic
+ 		// Try to obtain as much generic information about this system as possible
+ 		TDERootSystemDevice* rdevice = dynamic_cast<TDERootSystemDevice*>(device);
+ 
+-		// Guess at my form factor
+-		// dmidecode would tell me this, but is somewhat unreliable
+-		TDESystemFormFactor::TDESystemFormFactor formfactor = TDESystemFormFactor::Desktop;
+-		if (listByDeviceClass(TDEGenericDeviceType::Backlight).count() > 0) {	// Is this really a good way to determine if a machine is a laptop?
+-			formfactor = TDESystemFormFactor::Laptop;
++		// Take the form factor from the SMBIOS chassis type, which the kernel
++		// exposes world-readable. The grouping follows systemd-hostnamed's.
++		// Only where the firmware says nothing useful fall back to guessing
++		// from a backlight, which is not reliably enumerated by the time the
++		// root device is.
++		TDESystemFormFactor::TDESystemFormFactor formfactor = TDESystemFormFactor::Unclassified;
++		bool chassisok = false;
++		int chassis = readLineFile("/sys/class/dmi/id/chassis_type").stripWhiteSpace().toInt(&chassisok);
++		if (chassisok) {
++			switch (chassis) {
++				case 0x03:	// Desktop
++				case 0x04:	// Low-profile desktop
++				case 0x05:	// Pizza box
++				case 0x06:	// Mini tower
++				case 0x07:	// Tower
++				case 0x0D:	// All in one
++				case 0x0F:	// Space-saving
++				case 0x10:	// Lunch box
++				case 0x18:	// Sealed-case PC
++				case 0x23:	// Mini PC
++				case 0x24:	// Stick PC
++					formfactor = TDESystemFormFactor::Desktop;
++					break;
++				case 0x08:	// Portable
++				case 0x09:	// Laptop
++				case 0x0A:	// Notebook
++				case 0x0E:	// Sub notebook
++				case 0x1E:	// Tablet
++				case 0x1F:	// Convertible
++				case 0x20:	// Detachable
++					formfactor = TDESystemFormFactor::Laptop;
++					break;
++				case 0x11:	// Main server chassis
++				case 0x17:	// Rack mount chassis
++				case 0x1C:	// Blade
++				case 0x1D:	// Blade enclosure
++					formfactor = TDESystemFormFactor::Server;
++					break;
++				default:	// Other, unknown, or a type without a clear answer
++					break;
++			}
++		}
++		if (formfactor == TDESystemFormFactor::Unclassified) {
++			formfactor = TDESystemFormFactor::Desktop;
++			if (listByDeviceClass(TDEGenericDeviceType::Backlight).count() > 0) {
++				formfactor = TDESystemFormFactor::Laptop;
++			}
+ 		}
+ 		rdevice->internalSetFormFactor(formfactor);
+ 
