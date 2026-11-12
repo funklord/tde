@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Thu, 12 Nov 2026 15:59:55 +0100
+Subject: [PATCH] tdeioslave/sftp: report the creation time as a creation time
+
+stat() and listDir() appended the server's creation time under
+UDS_MODIFICATION_TIME, after the real modification time. The copy job
+reads the entry in order and keeps the last value, so every file
+copied over sftp got the creation time as its modification time.
+
+OpenSSH speaks SFTP version 3, which has no creation time, so libssh
+leaves createtime at zero and every copy was dated 1 January 1970.
+Reproduced against stock OpenSSH:
+
+    kfmclient copy sftp://user@127.0.0.1:2299/tmp/x/hello.txt file:///tmp/got/
+    stat -c %y /tmp/got/hello.txt      # 1970-01-01 01:00:00 CET
+
+Report it as UDS_CREATION_TIME, which the copy job already reads, and
+only when the server sent one (SSH_FILEXFER_ATTR_CREATETIME). An absent
+creation time is better left out than reported as 1970.
+
+The line came in with the backported slave in fd94618b.
+---
+ tdeioslave/sftp/tdeio_sftp.cpp | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/tdeioslave/sftp/tdeio_sftp.cpp b/tdeioslave/sftp/tdeio_sftp.cpp
+index d2a9e859..f49145e0 100644
+--- a/tdeioslave/sftp/tdeio_sftp.cpp
++++ b/tdeioslave/sftp/tdeio_sftp.cpp
+@@ -797,9 +797,12 @@ notype:
+     atom.m_long = sb->mtime;
+     entry.append(atom);
+ 
+-    atom.m_uds = UDS_MODIFICATION_TIME;
+-    atom.m_long = sb->createtime;
+-    entry.append(atom);
++    // SFTP v3, which OpenSSH speaks, carries no creation time.
++    if (sb->flags & SSH_FILEXFER_ATTR_CREATETIME) {
++      atom.m_uds = UDS_CREATION_TIME;
++      atom.m_long = sb->createtime;
++      entry.append(atom);
++    }
+   }
+ 
+   sftp_attributes_free(sb);
+@@ -2042,9 +2045,12 @@ notype:
+       atom.m_long = dirent->mtime;
+       entry.append(atom);
+ 
+-      atom.m_uds = UDS_MODIFICATION_TIME;
+-      atom.m_long = dirent->createtime;
+-      entry.append(atom);
++      // SFTP v3, which OpenSSH speaks, carries no creation time.
++      if (dirent->flags & SSH_FILEXFER_ATTR_CREATETIME) {
++        atom.m_uds = UDS_CREATION_TIME;
++        atom.m_long = dirent->createtime;
++        entry.append(atom);
++      }
+     }
+ 
+     sftp_attributes_free(dirent);

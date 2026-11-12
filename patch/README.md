@@ -19,6 +19,8 @@ changes, re-export it rather than editing the patches by hand.
     tdebase/fix-tdm-session-class{,-r141x}/      the greeter/user session class
     tdebase/fix-lock-resize-retry{,-r141x}/      the locker resize loop bound
     tdebase/fix-directory-mime-default{,-r141x}/ folders open in the file manager
+    tdebase/fix-sftp-mtime{,-r141x}/             sftp copies keep their mtime
+                                                 (not built: see project.md)
 
 Each tdebase branch is a single commit, exported for both the master and
 the r14.1.x line. As with tdepowersave, the r141x side is the one built and

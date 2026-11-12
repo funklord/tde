@@ -1623,6 +1623,31 @@ line to `~/.config/mimeapps.list` under `[Default Applications]`; the
 previous file is kept at `~/.config/mimeapps.list.before-tde-fix`. That is
 a local override and is independent of the packaged fix.
 
+## Files copied over sftp are dated 1970 -- FIXED, not built
+
+**Written 2026-11-12** on `fix/sftp-mtime` (master) and
+`fix/sftp-mtime-r141x`, exported to `patch/tdebase/fix-sftp-mtime{,-r141x}/`.
+Reported by beerssh with a reproduction against stock OpenSSH:
+`kfmclient copy sftp://...` gave a byte-identical file whose mtime was
+`1970-01-01 01:00:00 CET`, while file:// and fish:// copies kept theirs.
+
+`stat()` and `listDir()` in `tdeioslave/sftp/tdeio_sftp.cpp` appended
+the server's `createtime` as a second `UDS_MODIFICATION_TIME`, after the
+real one. tdelibs' copy job (`tdeio/job.cpp`, `case
+UDS_MODIFICATION_TIME:`) assigns on every matching atom, so the last one
+wins. OpenSSH speaks SFTP v3, which has no creation time, so libssh
+leaves it at 0. The fix reports it as `UDS_CREATION_TIME`, which the
+copy job already reads, and only when `SSH_FILEXFER_ATTR_CREATETIME` says
+the server sent one. That omits an unknown value rather than reporting
+1970. The KDE4 slave this was backported from emitted the creation time
+unconditionally. That was correct there only because it used the right
+key. The line arrived with that backport in `fd94618b` (2022).
+
+**Not compiled.** No TDE development headers are installed on this
+machine. The mechanism is established from both source trees and
+matches the reported value exactly. A build, then the reproduction, is
+what confirms it.
+
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so the package
