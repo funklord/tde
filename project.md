@@ -2126,8 +2126,19 @@ not by that tool.
   opinionated change that may not be welcome upstream, and it is the one
   decision that could turn this from a patch set into a fork.
 - Whether the greeter-class fix belongs in `doPAMAuth()` or in tdm's
-  separation of greeter and user PAM handles. The one-line form is obvious;
-  whether it is right has not been established.
+  separation of greeter and user PAM handles. **Settled 2026-11-12, from
+  prior art: the fix as written is right.** GDM sets
+  `XDG_SESSION_CLASS=greeter` only on the PAM handle of its greeter's own
+  service (`gdm-launch-environment`, `daemon/gdm-session-worker.c`), and
+  leaves user sessions to pam_systemd's default of `user`. LightDM gives
+  each session child its own handle and treats `greeter` as that
+  session's alone (`src/session-child.c`). In both, "greeter" belongs on
+  a handle that opens the greeter's own logind session. tdm's greeter has
+  no PAM session, so the class must not be set on the only handle there
+  is, and setting `user` before `pam_open_session()` is what the fix
+  does. A separate greeter handle would be a different feature,
+  registering tdm's greeter with logind as GDM and LightDM do, not a
+  correction of this one.
 - Which of the two `### What is and is not tested` headings keeps the
   name. **Settled 2026-11-12: neither does.** They covered different
   subjects, so each is named for its own: *What the probe reaches, and
