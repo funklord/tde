@@ -1692,6 +1692,31 @@ machine. The mechanism is established from both source trees and
 matches the reported value exactly. A build, then the reproduction, is
 what confirms it.
 
+## Requested: Konqueror accepting XDS drops -- not started
+
+Asked for from beerssh on 2026-11-11 and marked optional by the asker.
+XDS (X Direct Save, `XdndDirectSave0`) lets a drag source that does not
+yet have a local file -- a member of an archive, a remote file -- ask the
+file manager for a destination at the drop and write the file itself.
+File Roller and Ark send it. Dolphin, Thunar, PCManFM and Nautilus 3
+accept it. Konqueror 14.2.0~pre928 contains no `XdndDirectSave` string,
+so such a drop offers it nothing it can use.
+
+The receiving side, protocol version 0, is one drop path in libkonq and
+X11 only:
+
+1. On `XdndDrop`, if the type list offers `XdndDirectSave0`, read that
+   property (text/plain) on the source window to get the proposed name.
+2. Write the destination URL (`file://host/dir/name`) back into it.
+3. Convert the `XdndDirectSave0` selection. The source answers `S`
+   (written), `F` (fall back to `application/octet-stream`) or `E`.
+4. On `S`, refresh the view.
+
+**Not started, and deliberately behind the repairs.** It is a new
+interoperability feature rather than a fault, nothing here can build it
+yet, and testing it needs an XDS source driven on a live display. Whether
+upstream would take it is unasked. It would be its own pull request.
+
 ## Deploying the fixes on this machine
 
 Built as Debian packages rather than copied binaries, so the package
