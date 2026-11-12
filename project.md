@@ -130,12 +130,38 @@ express it, and they are not exclusive:
 Undecided, and it is the copyright holder's call. Nothing here depends on
 it: patches are written against the clones either way.
 
-## The machine these measurements come from
+## The machines these measurements come from
 
-Dell Latitude 5430, Intel Alder Lake-UP3 Iris Xe, internal panel `eDP-1`,
-USB-C DisplayPort outputs `DP-1` and `DP-2`. Debian 13, TDE
-`4:14.1.6-0debian13.0.0+0` from `mirror.ppa.trinitydesktop.org`, 112
-packages, prefix `/opt/trinity`. Measured 2026-09-06.
+**Until 2026-10-02: a Dell Latitude 5430**, Intel Alder Lake-UP3 Iris
+Xe, internal panel `eDP-1`, USB-C DisplayPort outputs `DP-1` and `DP-2`.
+Debian 13 with systemd, TDE `4:14.1.6-0debian13.0.0+0` from
+`mirror.ppa.trinitydesktop.org`, 112 packages, prefix `/opt/trinity`.
+Measured 2026-09-06. Every finding below that says "this machine" before
+that date means the Dell, and so does every lid and docked result. The
+Dell has been retired.
+
+**Since then: `ml350g6-01`, an HP ProLiant ML350 G6.** It is a tower
+(DMI chassis type 7) with no lid and no battery, and one output, `DP-0`.
+It runs Devuan 6 (excalibur) with **elogind 255.17 rather than systemd**,
+and **stock TDE 14.2 preview** from `trinity-testing`. None of the
+patches are installed. Measured 2026-11-12. Three things follow:
+
+- **The tdepowersave lid work cannot be exercised here at all.** There
+  is no lid switch to close. The tdebase fixes can be, and the faults
+  they fix are live: session `c1` reports `Class=greeter`, and
+  `/tmp/tdesocket-global` is `root 0755`. So finding 2 holds under
+  elogind as well as systemd. elogind exposes no `CanLock` property, so
+  the session class is the only check (`tool/verify-fixes.sh` now says
+  so).
+- **The running desktop is `master`, not `r14.1.x`.** The preview
+  version numbers are `git describe` counts from `r14.1.0`. tdebase
+  `pre928` is `12c6ceb8` (2026-09-08) and tdepowersave `pre78` is
+  `55d2144` (2026-08-26). Every master series applies to both commits as
+  well as to today's `master`. That inverts *Building* below: the master
+  twins are the ones that could be tested here, once headers exist.
+- **No TDE development headers are installed**, so nothing builds yet.
+  `/` has 4.3 GB free and `/home` 20 GB, and a tdebase build would press
+  either.
 
 ## Confirmed findings
 
@@ -843,9 +869,11 @@ None of these has been evaluated for correctness yet.
   fontconfig-2.18, twin sizing. A rebuild from `r14.1.x` is worth something
   on its own.
 
-## Building: master cannot be built on this machine
+## Building: master could not be built on the Dell
 
-Measured 2026-09-06, and it shapes the whole workflow.
+Measured 2026-09-06 on the Dell, and it shaped the workflow there. The
+current machine runs 14.2 preview, which is `master`, so the inversion
+below no longer holds. See *The machines these measurements come from*.
 
 **Both repositories' `master` targets unreleased R14.2 tdelibs.** They
 include headers that tdelibs 14.1.6 does not ship, so a build against the
