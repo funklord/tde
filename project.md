@@ -441,8 +441,21 @@ beside. By opcode: 20 `GetProperty` 3248, 19 `DeleteProperty` 1472,
 15 `QueryTree` 856, 2 `ChangeWindowAttributes` 48, 18 `ChangeProperty` 5.
 The shape matches the Dell's: property traffic on windows that have
 already gone. `.xsession-errors` does not say which process emits them,
-so the next measurement is per process, not another count. Cause not
-established.
+so the next measurement is per process, not another count.
+
+**Whose windows they are, measured read-only.** An X resource id carries
+its creating client's base in the high bits (`id & ~0x1fffff`, Xorg's
+default with 256 clients). Grouping the 5594 logged ids by base, and
+naming each base from `xwininfo -root -tree`, gives 68 clients. The
+largest named ones are konsole instances (968, 418, 264 and 77 errors),
+`kded`'s KWrited window (725), and clients that have since exited (1446
+on the largest base). So the requests go to short-lived windows --
+popups, tooltips, menus -- of ordinary TDE programs, after they are
+gone. The text of the error is TQt's own handler's, so the requester is
+a TQt program too. That narrows the search to whatever watches other
+programs' windows (the taskbar, the system tray, klipper), but owners
+cannot name the requester. That still wants a per-process trace, which
+means instrumenting the live session. Cause not established.
 
 ### 7. `tdelfeditor -e` strips GNU_RELRO from every TDE binary -- FIXED in libr
 
