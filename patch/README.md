@@ -38,6 +38,32 @@ The panel-off branch is stacked on the docked branch, so this series
 already contains every commit of `feat/lid-docked`; there is no separate
 export for it.
 
+## Splitting the tdepowersave series into its pull requests
+
+The thirteen commits are five upstream pull requests, sharing a branch
+only locally. Each group below was applied by itself with `git am` to
+`origin/master` and to `origin/r14.1.x`, measured 2026-11-12:
+
+    PR                                 patches                      alone?
+    fix/autosuspend-cancel-on-activity 0013                         yes
+    feat/netcfgd-profile               0007                         yes
+    feat/lid-docked                    0001-0006                    yes
+    feat/inhibit-toggle                feat-inhibit-toggle{,-r141x}/ see below
+    feat/lid-panel-off                 0009-0012, on lid-docked     needs both
+                                       and inhibit
+
+**The inhibit toggle, 0008, does not apply alone.** Its lid hunk is
+anchored on the comment `feat/lid-docked` adds to `handleLidEvent()`.
+`feat-inhibit-toggle{,-r141x}/` hold it re-anchored on stock's
+`// handle screen lock`. The added lines are identical to 0008's
+(compared mechanically), and the author and date are carried over.
+
+**Panel-off needs both lid-docked and inhibit beneath it**, because its
+display-off step is placed ahead of the inhibit gate. Submit it after
+both, or as a series stacked on them. The netcfgd profile is not
+beneath it: 0001-0006, 0008, 0009-0012 apply in that order without
+0007.
+
 ## Re-exporting
 
     cd <tdepowersave clone>
