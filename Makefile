@@ -39,9 +39,8 @@ style-source:
 
 # project.md is authoritative, so it is held to the tree: a heading that
 # appears twice means whichever one you find, the other is the one with
-# the answer. Added 2026-10-07; it reports one finding today, which is
-# the first open question in project.md and is deliberately left for
-# this tree to answer rather than silenced here.
+# the answer. Added 2026-10-07, when it reported one such pair; that
+# was answered in project.md on 2026-11-12 rather than silenced here.
 style-docs:
 	python3 tool/style_gate.py docs
 

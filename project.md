@@ -1263,7 +1263,7 @@ the workflow. Caught by the two diffstats disagreeing, 461 against 504,
 which is exactly what that comparison is kept for. Master was rebuilt from
 the corrected branch and both are 504 again.
 
-### What is and is not tested
+### What the probe reaches, and what needs a real lid
 
 `test/docked-detect/` exercises every read-only helper against the real
 build. Measured on the docked machine and on a nested server with no panel:
@@ -1483,7 +1483,7 @@ docked-lock and undocked-lock branches are gone -- the panel is handled once,
 at the top, which also removes the docked case where the global DPMS call
 would have blanked the external.
 
-### What is and is not tested
+### Verified on the real two-display setup
 
 Built and installed as `+lidfix10`. **Verified end to end 2026-10-02 on the
 real two-display setup** (external DP-1 3440x1440 + internal eDP-1), across
@@ -1889,7 +1889,7 @@ finally, on a two-display setup 2026-10-02, the **docked display-off** path
 no lock or suspend, the disable proven ours rather than the kernel's, the
 light-only backlight restore working, and the **docked lock**
 (`lockOnLidCloseWhenDocked`) bringing the lock screen up on the external
-while the internal stays off (see *What is and is not tested* under the
+while the internal stays off (see *Verified on the real two-display setup* under the
 display-off section for the method, and for two reported symptoms that
 turned out to be test-churn, not bugs).
 
@@ -1925,33 +1925,12 @@ not by that tool.
   separation of greeter and user PAM handles. The one-line form is obvious;
   whether it is right has not been established.
 - Which of the two `### What is and is not tested` headings keeps the
-  name. `project.md` carries it once about `test/docked-detect/` and
-  again about the `+lidfix10` build -- different subjects under one
-  heading, so whichever a reader finds, the other is the one with the
-  answer. Raised from `claude-guidelines` 2026-10-07 rather than
-  renamed, because which subject keeps the bare name is this
-  document's call and not a passing session's.
-
-  **The gate here could not see it until 2026-10-07, and now can.**
-  `make style` ran `style_gate.py check` only, while the duplicate is a
-  `docs`-mode finding -- so this tree's own gate had no way to report a
-  fault this tree has. `docs` was added the same day as a `style-docs`
-  sub-target, the form every other tree uses: `style-source` passes 15
-  files and `style-docs` names the pair. The subjects are given rather
-  than the line numbers because this entry first cited lines 1214 and
-  1434 and both were stale within the hour, shifted by an insertion
-  earlier in the file.
-
-  **So the gate is RED on one finding until the question above is
-  answered, and that is deliberate.** The `style-docs` recipe carries a
-  comment saying so, because `harmonization.md` notes that a red gate is
-  exactly when somebody reaches for an ignore rule -- and the ordinary
-  advice is to fix the finding before enabling the check, which was not
-  available here: the finding is a content decision belonging to this
-  document. Sixteen of the nineteen private trees ran both halves before
-  this change; the convention question of whether the inventory should
-  say so is `claude-guidelines`' signal list, since the settled table
-  names `make style` without naming its modes.
+  name. **Settled 2026-11-12: neither does.** They covered different
+  subjects, so each is named for its own: *What the probe reaches, and
+  what needs a real lid* (panel-off, `test/docked-detect/`) and
+  *Verified on the real two-display setup* (the `+lidfix10` display-off
+  split). That was the docs gate's one finding, and `make style` is green
+  again.
 
 - Whether the `hooks:` target should ask git where the hooks live.
   **Settled 2026-11-12: it does**, in the form `claude-guidelines` settled
