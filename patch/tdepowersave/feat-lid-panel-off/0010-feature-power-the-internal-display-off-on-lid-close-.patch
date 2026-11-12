@@ -61,7 +61,7 @@ index a2e701a..51b3621 100644
  autoInactiveBlacklist=mplayer,gmplayer,kaffeine,xine,mencoder,cdrecord,cdrecord-dvd,cdrdao,growisofs,kdetv,xawtv,realplay.bin,wodim
  autoDimmBlacklist=mplayer,gmplayer,kaffeine,xine,kdetv,xawtv,realplay.bin
 diff --git a/src/settings.cpp b/src/settings.cpp
-index 4c960fc..f575d72 100644
+index eae35b4..6c7bcdf 100644
 --- a/src/settings.cpp
 +++ b/src/settings.cpp
 @@ -266,19 +266,20 @@ bool Settings::load_general_settings(){

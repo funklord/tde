@@ -161,7 +161,9 @@ patches are installed. Measured 2026-11-12. Three things follow:
   `55d2144` (2026-08-26). Every master series applies to both commits as
   well as to today's `master`. That inverts *Building* below: the master
   twins are the ones that could be tested here, once headers exist.
-- **No TDE development headers are installed**, so nothing builds yet.
+- **No TDE development headers are installed**, so nothing links yet.
+  Compiling does work, from headers fetched into scratch: see *Compiling
+  against TDE 14.2 without installing anything*.
   `/` has 4.3 GB free and `/home` 20 GB, and a tdebase build would press
   either.
 
@@ -622,8 +624,8 @@ from the ACPI lid device tdepowersave already connects to) rather than on
 the form factor. `+lidfix5`. This restores the stock "Lock screen on lid
 close" checkbox too, not only the new ones.
 
-**The root cause is one layer down, in tdelibs -- FIXED, not built
-(2026-11-12).** This entry used to say the layer "does not map that
+**The root cause is one layer down, in tdelibs -- FIXED, compiles, not
+run (2026-11-12).** This entry used to say the layer "does not map that
 chassis type". That was wrong: tdelibs never reads the chassis type at
 all. `tdehardwaredevices.cpp` sets the root device to Laptop only if a
 `Backlight` device is already listed when it is classified, and Desktop
@@ -635,10 +637,11 @@ order was not established. The fix sidesteps the question:
 Laptop or Server, grouping the types as systemd-hostnamed does. The
 backlight guess is kept only for firmware that says nothing. Exported to
 `patch/tdelibs/`. Its only consumers are the hardware manager's dialog,
-which already shows Server, and tdepowersave's `isLaptop()`. **Not
-compiled**: no TDE or TQt development headers are installed here. Once
-it is built, this tower (chassis 7) should read Desktop, as it does now,
-and a notebook Laptop. tdepowersave's `hasLid()` gate stays right either
+which already shows Server, and tdepowersave's `isLaptop()`. It compiles
+against the 14.2 headers (see *Compiling against TDE 14.2 without
+installing anything*), and a sabotaged copy fails at its two marked
+lines. It has not been run. Once it is, this tower (chassis 7) should
+read Desktop, as it does now, and a notebook Laptop. tdepowersave's `hasLid()` gate stays right either
 way.
 
 The process lesson is finding 4's, sharpened: the first "it is definitely
@@ -1722,7 +1725,7 @@ line to `~/.config/mimeapps.list` under `[Default Applications]`; the
 previous file is kept at `~/.config/mimeapps.list.before-tde-fix`. That is
 a local override and is independent of the packaged fix.
 
-## Files copied over sftp are dated 1970 -- FIXED, not built
+## Files copied over sftp are dated 1970 -- FIXED, compiles, not run
 
 **Written 2026-11-12** on `fix/sftp-mtime` (master) and
 `fix/sftp-mtime-r141x`, exported to `patch/tdebase/fix-sftp-mtime{,-r141x}/`.
@@ -1742,10 +1745,68 @@ the server sent one. That omits an unknown value rather than reporting
 unconditionally. That was correct there only because it used the right
 key. The line arrived with that backport in `fd94618b` (2022).
 
-**Not compiled.** No TDE development headers are installed on this
-machine. The mechanism is established from both source trees and
-matches the reported value exactly. A build, then the reproduction, is
-what confirms it.
+**Compiles, not run.** The patched unit compiles to an object against
+the TDE 14.2 headers and the system libssh 0.11.5, and a sabotaged copy
+fails at the two changed identifiers. The mechanism is established from
+both source trees and matches the reported value exactly. Running the
+reproduction against a built slave is what confirms it.
+
+## Compiling against TDE 14.2 without installing anything
+
+**Measured 2026-11-12, and it changes what "not built" has to mean
+here.** No TDE development package is installed and installing one needs
+root. But the headers can be fetched without root: `apt-get download`, or
+`curl` on a file named in the repo's own `Packages.gz`, then
+`dpkg-deb -x` into scratch. Each file was checked against the SHA256
+its index gives. The set needed is `tdelibs14-trinity-dev`,
+`libtqt3-headers`, `libtqt3-mt-dev`, `tqt3-dev-tools` (`tquic`) and
+`libdbus-1-tqt-dev`, all from `trinity-testing`.
+
+Two traps, each paid for once:
+
+- **The mirror's index names files it does not hold.** The Debian 13
+  build of `tdelibs14-trinity-dev` pre433 is listed and 404s. The
+  Ubuntu 25.04 build of the same version is there and was verified
+  against the `plucky` index. The headers come from the same source, so
+  they serve for a compile check. They are newer (pre433) than the
+  installed library (pre343), so they do not serve for linking and
+  running.
+- **TQt wants the flags its own `.pc` declares**:
+  `-DTQT_NO_ASCII_CAST -DTQT_NO_STL -DTQT_NO_COMPAT -DTQT_NO_TRANSLATION
+  -DTQT_THREAD_SUPPORT -D_REENTRANT`. Without `TQT_THREAD_SUPPORT`, stock
+  kdesktop_lock fails on `TQEventLoopThread`.
+
+What each unit needs generated: `tdeconfig_compiler` (in the tdelibs dev
+package) for `kdesktopsettings.h`, `tquic` for tdepowersave's `.ui`
+headers, and empty stubs for `config.h` and the `.moc` includes. A stub
+is safe for a compile check and useless for a link.
+
+**The method is a pair and a sabotage.** Stock `master` is compiled first
+as the control, in a fully stock tree, because a patch that changes a
+header makes the stock `.cpp` fail for the wrong reason. Then the patched
+file is compiled, and then a copy with one patch identifier renamed,
+which must fail at exactly that name. Results, all on `master`:
+
+    tdeio_sftp.cpp                   sftp mtime        compiles (object)
+    tdehardwaredevices.cpp           form factor       compiles
+    kdesktop/lock/lockprocess.cpp    FIFO, resize      compile, each
+    tdepowersave, 7 units            13-commit series  compile, after a fix
+    tdepowersave.cpp                 inhibit, alone    compiles
+
+**It found a real defect.** The master tdepowersave series was made by
+cherry-picking from `r14.1.x`, and 0007 (the netcfgd profile) brought in
+`#include <kstandarddirs.h>` and `<kprocess.h>`. Neither exists on
+`master`, which renamed them to `tde*`. Stock `settings.cpp` compiles,
+and the old series fails at that line. The series is re-exported with
+the two includes corrected, and the corrected tree differs from the old
+in exactly those two lines. So the master series would have broken the
+build. Nothing else had looked, because master could not be built where
+the series was made.
+
+**Not reached:** tdm's `client.c`, whose change is inside `#ifdef
+USE_PAM`, because PAM headers are not installed either. Nor anything on
+the `r14.1.x` line, whose code does not compile against 14.2 headers by
+design. Those series were built on the Dell.
 
 ## Requested: Konqueror accepting XDS drops -- not started
 

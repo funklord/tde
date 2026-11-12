@@ -544,7 +544,7 @@ index cc7ab7e..d2ef9f6 100644
  	//! for check the status of the screensaver
  	int checkScreenSaverStatus();
 diff --git a/src/settings.cpp b/src/settings.cpp
-index 9deafa2..4c960fc 100644
+index 2a9eaee..eae35b4 100644
 --- a/src/settings.cpp
 +++ b/src/settings.cpp
 @@ -266,6 +266,15 @@ bool Settings::load_general_settings(){

@@ -20,10 +20,10 @@ changes, re-export it rather than editing the patches by hand.
     tdebase/fix-lock-resize-retry{,-r141x}/      the locker resize loop bound
     tdebase/fix-directory-mime-default{,-r141x}/ folders open in the file manager
     tdebase/fix-sftp-mtime{,-r141x}/             sftp copies keep their mtime
-                                                 (not built: see project.md)
+                                                 (compiles: see project.md)
 
     tdelibs/fix-formfactor-dmi-chassis{,-r141x}/ form factor from the SMBIOS
-                                                 chassis type (not built)
+                                                 chassis type (compiles)
 
     libr/fix-keep-relro-and-symbols{,-r141x}/    RELRO and .symtab survive a
                                                  libr rewrite (built, tested)
@@ -38,9 +38,11 @@ inhibit toggle, the panel-off mechanism, the display-off split with its
 backlight-only checkbox, and the autosuspend countdown cancelling on
 activity. The **r141x series is the authoritative one**: it
 is what was built into the installed `+lidfix` packages and tested on the
-live desktop. The master twin was produced by cherry-pick and is
-content-identical (`git range-diff` agrees) but is **not build-verified**,
-because master does not build on this machine.
+live desktop. The master twin was produced by cherry-pick. On 2026-11-12 it was
+compiled unit by unit against TDE 14.2 headers, which found two
+`r14.1.x` include names in 0007 that `master` does not have. They are
+corrected, and every changed unit now compiles. It has still not been
+linked or run.
 
 The panel-off branch is stacked on the docked branch, so this series
 already contains every commit of `feat/lid-docked`; there is no separate

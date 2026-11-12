@@ -182,7 +182,7 @@ index 300e85d..04e30e9 100644
  	scheme_changed = false;
  	if(!general_changed) buttonApply->setEnabled(false);
 diff --git a/src/settings.cpp b/src/settings.cpp
-index 3a7760c..9deafa2 100644
+index 3a7760c..2a9eaee 100644
 --- a/src/settings.cpp
 +++ b/src/settings.cpp
 @@ -30,6 +30,10 @@
@@ -190,8 +190,8 @@ index 3a7760c..9deafa2 100644
  // KDE Header
  #include <tdelocale.h>
 +#include <tdeglobal.h>
-+#include <kstandarddirs.h>
-+#include <kprocess.h>
++#include <tdestandarddirs.h>
++#include <tdeprocess.h>
 +#include <cstdio>
  
  // TQt Header
