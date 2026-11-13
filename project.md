@@ -1996,9 +1996,28 @@ which `tdm/confproc.pl` generates from `config.def`. Its fix sits inside
 that proved nothing"). So the sabotaged copy is what shows that block
 was compiled: it failed at the patched line.
 
-**Not reached:** anything on the `r14.1.x` line, whose code does not
-compile against 14.2 headers by design. Those series were built on the
-Dell.
+**The `r14.1.x` line, compiled against 14.1.7 headers (2026-11-13).**
+That code does not compile against 14.2 headers, by design. The series
+built on the Dell were compiled there. The newer `-r141x` exports were
+not, until the `trinity-r14.1.x` repository's own index supplied the
+dev packages: `tdelibs14-trinity-dev`, `libtqt3-mt-dev`,
+`libtqt3-headers`, `tqt3-dev-tools` and `libdbus-1-tqt-dev`, each at
+14.1.7 and hash-checked. The 14.1 line adds one trap. Its TQt headers
+are `ntq*.h`, and the `tq*.h` names tdelibs includes come from
+`libtqtinterface-dev` under `usr/include/tqt`, with the dbus headers
+under `usr/include/dbus-1-tqt`. Each changed unit was compiled
+syntax-only, stock and then patched, and then with one patched
+identifier renamed, which must fail at that name:
+
+    tdeio_sftp.cpp           sftp mtime            compiles, sabotage fails
+    konq_operations.cpp      XDS drops             compiles, sabotage fails
+    tdehardwaredevices.cpp   form factor           compiles, sabotage fails
+    tdepowersave.cpp         inhibit, standalone   compiles, sabotage fails
+    configuredialog.cpp      lid series with the   compiles, sabotage fails
+                             amended 0007
+
+Stock `configuredialog.cpp` fails against the series' `.ui` header, as
+it did on master, so its control is the sabotage alone.
 
 ### The master tdepowersave series, linked and run (2026-11-13)
 
