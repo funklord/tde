@@ -667,9 +667,29 @@ backlight guess is kept only for firmware that says nothing. Exported to
 which already shows Server, and tdepowersave's `isLaptop()`. It compiles
 against the 14.2 headers (see *Compiling against TDE 14.2 without
 installing anything*), and a sabotaged copy fails at its two marked
-lines. It has not been run. Once it is, this tower (chassis 7) should
-read Desktop, as it does now, and a notebook Laptop. tdepowersave's `hasLid()` gate stays right either
-way.
+lines. tdepowersave's `hasLid()` gate stays right either way.
+
+**Run on master, 2026-11-13.** `libtdehw` was built from `origin/master`
+twice: once with the fix, and once from the same tree with only
+`tdehardwaredevices.cpp` reverted, as the control. The build used the
+scratch root from *Compiling against TDE 14.2*, plus `libmagic-dev`,
+`libeudev-dev`, `libxml2-dev`, `libxslt1-dev`, `libbz2-dev` and
+`zlib1g-dev`. `LIBRARY_PATH` and `CPATH` point gcc at the root, because
+`check_library_exists` ignores `CMAKE_LIBRARY_PATH`. The configure flags
+were `-DWITH_ARTS=OFF -DWITH_ALSA=OFF -DWITH_SSL=OFF -DWITH_CUPS=OFF
+-DWITH_PCRE2=OFF`, and the build needs both submodules. A probe prints
+`rootSystemDevice()->formFactor()`. Other chassis types were bound over
+`/sys/class/dmi/id/chassis_type` in an unprivileged mount namespace
+(root to mount, then mapped back to the user, as in the sftp run):
+
+    chassis            stock         patched
+    7  Tower (real)    1 Desktop     1 Desktop
+    10 Notebook        1 Desktop     2 Laptop
+    23 Rack mount      1 Desktop     3 Server
+    2  Unknown         1 Desktop     1 Desktop (backlight fallback)
+
+So the Dell's case, a notebook with no backlight seen at enumeration,
+now reads Laptop, and nothing that read Desktop correctly changes.
 
 The process lesson is finding 4's, sharpened: the first "it is definitely
 there" rested on a standalone render of the uic **base** dialog, which

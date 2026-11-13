@@ -466,8 +466,15 @@ loses nothing.
 ### Testing
 
 Compiles against the 14.2 headers; a deliberately broken copy fails at
-both marked lines. **Not yet run.** On a tower (chassis 7) it should read
-Desktop as before; on a notebook, Laptop.
+both marked lines. Run on `master`, with libtdehw built with and without
+the change from the same tree, and the chassis type faked through a
+bind mount over sysfs:
+
+    chassis            before        after
+    7  Tower           Desktop       Desktop
+    10 Notebook        Desktop       Laptop
+    23 Rack mount      Desktop       Server
+    2  Unknown         Desktop       Desktop (backlight fallback)
 
 ---
 
