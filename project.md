@@ -2063,30 +2063,61 @@ named for display 9, so they cannot collide with `:0`'s, and they were
 removed by name afterwards. The resize bound was compiled but not
 exercised.
 
-## Requested: Konqueror accepting XDS drops -- not started
+## Konqueror accepting XDS drops -- IMPLEMENTED, run on master
 
 Asked for from beerssh on 2026-11-11 and marked optional by the asker.
-XDS (X Direct Save, `XdndDirectSave0`) lets a drag source that does not
-yet have a local file -- a member of an archive, a remote file -- ask the
-file manager for a destination at the drop and write the file itself.
-File Roller and Ark send it. Dolphin, Thunar, PCManFM and Nautilus 3
-accept it. Konqueror 14.2.0~pre928 contains no `XdndDirectSave` string,
-so such a drop offers it nothing it can use.
+XDS (X Direct Save, `XdndDirectSave0`) lets a drag source that has no
+local file yet, such as an archive member or a remote file, ask the file
+manager for a destination at the drop and write the file itself. File
+Roller and Ark send it, and Dolphin, Thunar, PCManFM and Nautilus 3
+accept it. Stock Konqueror does not recognise the type: it asks the
+source for `text/uri-list`, gets nothing, and saves nothing.
 
-The receiving side, protocol version 0, is one drop path in libkonq and
-X11 only:
+**Written 2026-11-13** on `feat/konqueror-xds` (master), backported as
+`feat/konqueror-xds-r141x` with an identical change, and exported to
+`patch/tdebase/feat-konqueror-xds{,-r141x}/`. It was held back until the
+repairs were done and something here could build it. The scratch root
+under *Compiling against TDE 14.2* now can.
 
-1. On `XdndDrop`, if the type list offers `XdndDirectSave0`, read that
-   property (text/plain) on the source window to get the proposed name.
-2. Write the destination URL (`file://host/dir/name`) back into it.
-3. Convert the `XdndDirectSave0` selection. The source answers `S`
-   (written), `F` (fall back to `application/octet-stream`) or `E`.
-4. On `S`, refresh the view.
+**Where it lives, and why there.** `KonqOperations::doDrop()` is the one
+drop path every libkonq view goes through, and KDE 4's libkonq handled
+XDS in the same place, so that is the prior art followed. One file-local
+helper runs first:
 
-**Not started, and deliberately behind the repairs.** It is a new
-interoperability feature rather than a fault, nothing here can build it
-yet, and testing it needs an XDS source driven on a live display. Whether
-upstream would take it is unasked. It would be its own pull request.
+- read the proposed name from `XdndDirectSave0` on the window that owns
+  `XdndSelection`;
+- keep only its last path component, so the source cannot choose the
+  directory;
+- ask before replacing an existing file;
+- write back `file://<host>/<path>`;
+- convert the `XdndDirectSave0` target through `TQDropEvent::encodedData()`.
+
+TQt exports no XDND state, and none is needed: the protocol makes the
+drag source the selection owner, and TQt's own conversion carries the
+request. `S` notifies the directory views through `KDirNotify`. `F`
+falls through to the existing paths, which take
+`application/octet-stream`. `E` is reported with
+`KMessageBox::queuedMessageBox`. That box was first written modal, and
+the run showed it holding the source waiting for `XdndFinished` behind
+the dialog. Only local directories are offered, as the file URL
+requires. No header changes, so there is no ABI question.
+
+**Tested end to end on master against the installed 14.2**, with
+`test/xds-drop/`: a small Xlib XDS source and a harness that runs
+konqueror on `:9` in a PID namespace. Built `libkonq` is taken ahead of
+the installed one through `LD_LIBRARY_PATH`, which
+`/proc/<pid>/maps` confirms:
+
+    installed libkonq     accepted, asks for text/uri-list, no file
+    patched libkonq       source answers S, file saved in the directory
+    name "../escape.txt"  saved as dropdir/escape.txt, nothing above it
+    source answers E      drop finishes, message queued, no file
+    source answers F      falls through to the ordinary paths
+
+**Not exercised:** the overwrite question, a real XDS source such as
+File Roller (none is installed), and the `r14.1.x` build. Whether
+upstream would take it is unasked. It would be its own pull request,
+PR 13.
 
 ## Deploying the fixes on this machine
 

@@ -1,0 +1,144 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Fri, 13 Nov 2026 08:46:06 +0100
+Subject: [PATCH] libkonq: accept X Direct Save drops
+
+A drag source that has no local file yet -- an archive member, a file on
+a remote host -- can offer XdndDirectSave0 (XDS) and write the file
+itself once the file manager names a destination. Konqueror did not
+recognise the type, so such a drop asked the source for text/uri-list,
+got nothing, and saved nothing.
+
+Handle protocol version 0 at the top of KonqOperations::doDrop(). Read
+the name the source proposes from the XdndDirectSave0 property on the
+window that owns XdndSelection, keep only its last path component so the
+source cannot choose the directory, and ask before replacing an existing
+file. Then write the file URL of the destination back into the property
+and convert the XdndDirectSave0 target. On 'S' notify the directory
+views of the new file. On 'F' fall through to the existing paths, which
+take the data as application/octet-stream. On 'E' report it in a queued
+message box, so the source is not left waiting for XdndFinished behind
+a dialog.
+
+Only local directories are offered, as the specification's file URL
+requires.
+
+Link: https://www.freedesktop.org/wiki/Specifications/XDS/
+---
+ libkonq/konq_operations.cpp | 93 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 93 insertions(+)
+
+diff --git a/libkonq/konq_operations.cpp b/libkonq/konq_operations.cpp
+index 0897cc2c..4a8d8b0d 100644
+--- a/libkonq/konq_operations.cpp
++++ b/libkonq/konq_operations.cpp
+@@ -37,6 +37,7 @@
+ 
+ // For doDrop
+ #include <tqdir.h>//first
++#include <tqfileinfo.h>
+ #include <assert.h>
+ #include <tdeapplication.h>
+ #include <kipc.h>
+@@ -312,9 +313,101 @@ bool KonqOperations::askDeleteConfirmation( const KURL::List & selectedURLs, int
+     return true;
+ }
+ 
++/*
++ * X Direct Save (XDS), protocol version 0: the drag source has no local file
++ * yet -- an archive member, a remote file -- and offers to write one wherever
++ * the drop lands. Read the name it proposes from the XdndDirectSave0 property
++ * on its window, write back the URL to save to, then convert the
++ * XdndDirectSave0 target. The source answers 'S' once it has written the
++ * file, 'F' to ask for the data to be taken as application/octet-stream
++ * instead, or 'E' on failure.
++ * https://www.freedesktop.org/wiki/Specifications/XDS/
++ *
++ * Returns false when the drop is not an XDS drop onto a local directory, or
++ * when the source asked for the fallback, so that doDrop() carries on.
++ */
++static bool doDirectSaveDrop( const KURL & dest, TQDropEvent * ev, TQWidget * parent )
++{
++    if ( !ev->provides( "XdndDirectSave0" ) || !dest.isLocalFile() )
++        return false;
++
++    Display *dpy = tqt_xdisplay();
++    Atom xdndSelection = XInternAtom( dpy, "XdndSelection", False );
++    Atom xdsProperty = XInternAtom( dpy, "XdndDirectSave0", False );
++    Atom textPlain = XInternAtom( dpy, "text/plain", False );
++
++    // The XDND source owns XdndSelection for as long as the drag lasts.
++    Window source = XGetSelectionOwner( dpy, xdndSelection );
++    if ( source == None )
++        return false;
++
++    Atom type;
++    int format;
++    unsigned long count, remaining;
++    unsigned char *data = 0;
++    if ( XGetWindowProperty( dpy, source, xdsProperty, 0, 1024, False, AnyPropertyType,
++                             &type, &format, &count, &remaining, &data ) != Success || !data )
++        return false;
++    TQString fileName = TQString::fromUtf8( (const char *) data, count );
++    XFree( data );
++
++    // A name and not a path: the directory is where the user dropped.
++    fileName = fileName.section( '/', -1 );
++    if ( fileName.isEmpty() || fileName == "." || fileName == ".." )
++        return false;
++
++    KURL dir = dest;
++    if ( !TQFileInfo( dest.path() ).isDir() )
++        dir = dest.upURL();
++    KURL target = dir;
++    target.addPath( fileName );
++
++    if ( TQFileInfo( target.path() ).exists() &&
++         KMessageBox::warningContinueCancel( parent,
++             i18n( "A file named \"%1\" already exists. Do you want to overwrite it?" ).arg( fileName ),
++             i18n( "Overwrite File?" ), i18n( "Overwrite" ) ) != KMessageBox::Continue )
++    {
++        ev->accept( false );
++        return true;
++    }
++
++    // The specification asks for a file URL naming this host.
++    char host[256];
++    if ( gethostname( host, sizeof( host ) ) != 0 )
++        host[0] = '\0';
++    host[sizeof( host ) - 1] = '\0';
++    KURL saveURL;
++    saveURL.setProtocol( "file" );
++    saveURL.setHost( TQString::fromLocal8Bit( host ) );
++    saveURL.setPath( target.path() );
++    TQCString saveTo = saveURL.url().utf8();
++    XChangeProperty( dpy, source, xdsProperty, textPlain, 8, PropModeReplace,
++                     (const unsigned char *) saveTo.data(), saveTo.length() );
++
++    TQByteArray reply = ev->encodedData( "XdndDirectSave0" );
++    if ( reply.size() > 0 && reply[0] == 'F' )
++        return false;
++    if ( reply.size() > 0 && reply[0] == 'S' )
++    {
++        KDirNotify_stub allDirNotify( "*", "KDirNotify*" );
++        allDirNotify.FilesAdded( dir );
++        ev->acceptAction();
++        return true;
++    }
++
++    // Queued, so that the drop completes and the source is not left waiting
++    // for XdndFinished behind a dialog.
++    KMessageBox::queuedMessageBox( parent, KMessageBox::Sorry,
++        i18n( "The application the file was dragged from could not save \"%1\" here." ).arg( fileName ) );
++    ev->accept( false );
++    return true;
++}
++
+ void KonqOperations::doDrop( const KFileItem * destItem, const KURL & dest, TQDropEvent * ev, TQWidget * parent )
+ {
+     kdDebug(1203) << "doDrop: dest : " << dest.url() << endl;
++    if ( doDirectSaveDrop( dest, ev, parent ) )
++        return;
+     KURL::List lst;
+     TQMap<TQString, TQString> metaData;
+     if ( KURLDrag::decode( ev, lst, metaData ) ) // Are they urls ?

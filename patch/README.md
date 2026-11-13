@@ -21,6 +21,8 @@ changes, re-export it rather than editing the patches by hand.
     tdebase/fix-directory-mime-default{,-r141x}/ folders open in the file manager
     tdebase/fix-sftp-mtime{,-r141x}/             sftp copies keep their mtime
                                                  (run on master: project.md)
+    tdebase/feat-konqueror-xds{,-r141x}/         Konqueror accepts X Direct
+                                                 Save drops (run on master)
 
     tdelibs/fix-formfactor-dmi-chassis{,-r141x}/ form factor from the SMBIOS
                                                  chassis type (run on master)

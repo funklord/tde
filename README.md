@@ -50,6 +50,10 @@ in one person's packages.
   while; folders opened from GTK programs that went to Cervisia instead
   of the file manager; SFTP copies dated 1970; and `tdelfeditor`
   stripping `GNU_RELRO` from every binary it edits, fixed in libr.
+- **Drops from archives and remote sources.** Konqueror accepts X
+  Direct Save, so a file dragged out of an archive manager or a remote
+  browser is saved where it is dropped, as it already is in Dolphin,
+  Thunar and Nautilus.
 
 **Where each one stands.** Every fix is listed with its evidence and its
 test status in `project.md`, under *Confirmed findings*. The stable-line

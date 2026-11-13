@@ -5,8 +5,8 @@ Ready to paste into `mirror.git.trinitydesktop.org`. One per branch pair.
 **Before submitting**, check each commit carries your `Signed-off-by:` --
 TDE carries the DCO and that line is a statement about provenance that only
 its author can make. PRs 1 to 7 carry it since the re-export of
-2026-09-26. **PRs 8, 9 and 10, written 2026-11-12, do not**, and need it
-added:
+2026-09-26. **PRs 8, 9 and 10, written 2026-11-12, and PR 13, written
+2026-11-13, do not**, and need it added:
 
     git commit --amend -s          # on each branch, master and r14.1.x
 
@@ -610,3 +610,50 @@ inhibited so scheme timeouts cannot overwrite the saved DPMS snapshot,
 `handleDCOPApplicationRemoved()` restores normal handling if kdesktop dies.
 The one `setDPMSTimeouts()` call that bypasses the guard is in `_quit()`,
 restoring defaults on exit, where unguarded is correct.
+
+---
+
+## PR 13 -- tdebase: `feat/konqueror-xds`
+
+**Title:** `libkonq: accept X Direct Save drops`
+
+A drag source that has no local file yet, such as an archive member or a
+file on a remote host, can offer `XdndDirectSave0` (XDS). It then writes
+the file itself once the file manager names a destination. File Roller
+and Ark send it, and Dolphin, Thunar, PCManFM and Nautilus accept it.
+Konqueror did not recognise the type: such a drop asked the source for
+`text/uri-list`, got nothing, and saved nothing.
+
+This handles protocol version 0 at the top of
+`KonqOperations::doDrop()`, the drop path every libkonq view shares,
+which is also where KDE 4's libkonq handled it. The name the source
+proposes is read from the `XdndDirectSave0` property on the window that
+owns `XdndSelection`. Only its last path component is kept, so the
+source cannot choose the directory, and an existing file is not replaced
+without asking. The destination's file URL is written back, and the
+`XdndDirectSave0` target is converted through the drop event:
+
+- `S`: the directory views are told about the new file.
+- `F`: the drop falls through to the existing paths
+  (`application/octet-stream`).
+- `E`: a queued message box reports it, so the source is not left
+  waiting for `XdndFinished` behind a dialog.
+
+Only local directories are offered, as the specification's file URL
+requires. No header changes.
+
+### Testing
+
+On `master`, against installed TDE 14.2 on a nested display, with a
+minimal Xlib XDS source:
+
+    unpatched           drop accepted, text/uri-list asked for, no file
+    patched             source answers S, file saved in the directory
+    name ../escape.txt  saved inside the directory, nothing above it
+    source answers E    drop completes, message shown, no file
+    source answers F    falls through to the ordinary drop paths
+
+Not tested: the overwrite question, a real XDS source, and the
+`r14.1.x` build, which carries the same change.
+
+---
