@@ -54,7 +54,7 @@ index b4eacc4..8b78df3 100644
      <tabstop>cB_batteryScheme</tabstop>
      <tabstop>cB_lockSuspend</tabstop>
 diff --git a/src/configuredialog.cpp b/src/configuredialog.cpp
-index 04e30e9..a8cd6d7 100644
+index b986ba0..f36921d 100644
 --- a/src/configuredialog.cpp
 +++ b/src/configuredialog.cpp
 @@ -129,6 +129,7 @@ ConfigureDialog::ConfigureDialog( TDEConfig *_config, HardwareInfo *_hwinfo, Set
@@ -65,7 +65,7 @@ index 04e30e9..a8cd6d7 100644
  	}
  	// hide CPU Freq page if not supported
  	if (!hwinfo->supportCPUFreq()) {
-@@ -321,6 +322,7 @@ void ConfigureDialog::setTooltips(){
+@@ -327,6 +328,7 @@ void ConfigureDialog::setTooltips(){
  	TQToolTip::add(cB_lockSuspend, i18n("If selected, the screen is locked on suspend or standby."));
  	TQToolTip::add(cB_lockLidMode, i18n("Whether the screen is locked when the lid is closed: never, only when the machine is not docked (no external display connected), or always."));
  	TQToolTip::add(cB_actionLidDocked, i18n("If selected, the configured lid-close action still runs while an external display is connected (docked)."));
@@ -73,7 +73,7 @@ index 04e30e9..a8cd6d7 100644
  
  	TQToolTip::add(cB_autoSuspend, i18n("Check this box to enable or disable automatic suspension of "
  					   "the computer."));
-@@ -719,6 +721,7 @@ void ConfigureDialog::setGeneralSettings() {
+@@ -725,6 +727,7 @@ void ConfigureDialog::setGeneralSettings() {
  	bool lockLidDocked = tdeconfig->readBoolEntry("lockOnLidCloseWhenDocked",false);
  	cB_lockLidMode->setCurrentItem( !lockLid ? 0 : (lockLidDocked ? 2 : 1) );
  	cB_actionLidDocked->setChecked(tdeconfig->readBoolEntry("performLidActionWhenDocked",false));
@@ -81,7 +81,7 @@ index 04e30e9..a8cd6d7 100644
  	cB_autostart->setChecked(tdeconfig->readBoolEntry("Autostart",false));
  	cB_autostart_neverAsk->setChecked(tdeconfig->readBoolEntry("AutostartNeverAsk",false));
  
-@@ -897,6 +900,7 @@ void ConfigureDialog::saveGeneralSettings() {
+@@ -903,6 +906,7 @@ void ConfigureDialog::saveGeneralSettings() {
  	tdeconfig->writeEntry("lockOnLidClose", cB_lockLidMode->currentItem() >= 1);
  	tdeconfig->writeEntry("lockOnLidCloseWhenDocked", cB_lockLidMode->currentItem() == 2);
  	tdeconfig->writeEntry("performLidActionWhenDocked",cB_actionLidDocked->isOn());

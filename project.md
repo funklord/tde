@@ -1864,7 +1864,76 @@ was compiled: it failed at the patched line.
 
 **Not reached:** anything on the `r14.1.x` line, whose code does not
 compile against 14.2 headers by design. Those series were built on the
-Dell. Nothing here has been linked or run.
+Dell.
+
+### The master tdepowersave series, linked and run (2026-11-13)
+
+The whole 13-commit master series was built with its own cmake. The
+build used no root and installed nothing. It ran against the TDE 14.2
+libraries installed on this machine, and that run found a defect in
+0007 that the Dell could not have shown.
+
+**Building.** Fetch `tde-cmake`, `tdelibs14-trinity` and
+`tdelibs14-trinity-dev` (Ubuntu pre433; the Debian file still 404s),
+`libtqt3-mt`, `libtqt3-mt-dev`, `libtqt3-headers`, `tqt3-dev-tools`,
+`libdbus-1-tqt-dev` and `libdbus-1-dev`. Take each from the repo's
+current `Packages.gz`, not apt's lists: those are stale and 404 without
+an `apt update`. Check each against its index SHA256, then `dpkg-deb -x`
+them into one scratch root. Four things then let cmake use that root:
+
+- a `tde-config` stand-in that answers `--install include|lib|cmake`
+  from the root and passes everything else to the installed one;
+- a copy of `tdelibs.cmake` with `/opt/trinity/` rewritten into the root;
+- `PKG_CONFIG_SYSROOT_DIR` set to the root, with `libdbus-1-dev` unpacked
+  there too, because the sysroot prefixes even the system's
+  `-I/usr/include/dbus-1.0`;
+- `-DTDE_CMAKE_TEMPLATES`, `-DTDE_CMAKE_MODULES` and
+  `-DINTLTOOL_MERGE_EXECUTABLE` pointing into the root's
+  `usr/share/cmake-3.31`.
+
+`make -j8` then builds every target.
+
+**Linking against what is installed.** `ldd -r` on
+`libtdeinit_tdepowersave.so`, with `LD_LIBRARY_PATH=/opt/trinity/lib` so
+the installed pre343 libraries win over the build's RUNPATH, reports no
+undefined symbol. As a control, a stub library calling a missing
+function is reported undefined by the same check. So the series built
+against the pre433 headers runs on the pre343 libraries this machine
+has.
+
+**Running it.** Xvfb on `:9`, `dcopserver --nofork`, a private `TDEHOME`
+and `dbus-run-session`, as in `test/inhibit-chain/`, so nothing touches
+`:0` or the live DCOP. `/proc/<pid>/maps` shows the installed
+`libtdecore` with the built module. tdepowersave registers on DCOP and
+answers `currentScheme` (`Performance`). `openConfigureDialog` returns
+true and the settings dialog appears, and the process is still running
+when the harness tears it down. The only DCOP calls made were
+`disableAutosuspend true`, `currentScheme` and `openConfigureDialog`,
+never a suspend.
+
+**The defect it found: 0007 drew the Networking page over the first
+scheme page.** On a machine without `ncfg`, `setIcons()` calls
+`tB_scheme->removeItem(networking)`. TQToolBox's `removeItem()` neither
+deletes nor hides the page. It reparents the page onto the toolbox at
+(0,0), and the page is then drawn there over "Screen Saver and DPMS":
+the "Network profile:" label and combo cover that page's first three
+rows. The Dell had netcfgd installed, so the branch that removes the
+page never ran there. The fix hides the page after removing it. It is
+hidden rather than deleted, because the later uses of the combo call
+`ncfgAvailable()` again, and that could become true while the dialog is
+open. The screenshot before the fix is the control, and the one after
+shows the page clean. A second run with a stand-in `ncfg` on PATH, which
+only prints two profile names, shows "Networking" as the last toolbox
+item. So the other branch still works.
+
+0007 is amended on both lines, with the same six lines (compared
+mechanically), and the later commits are replayed. In the re-export
+only 0007 changed, plus hunk offsets in 0011. **0007 carries the
+holder's sign-off from before this change.** Confirm it still holds,
+as with PR 12.
+
+**Not reached:** the lid paths (this machine has no lid), DPMS (Xvfb has
+none), and the tray, which needs a system tray on the nested display.
 
 ## Requested: Konqueror accepting XDS drops -- not started
 

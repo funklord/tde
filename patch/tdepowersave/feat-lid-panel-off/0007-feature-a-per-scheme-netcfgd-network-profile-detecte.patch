@@ -32,12 +32,12 @@ submitting.
 Signed-off-by: Nabeel Sowan <nabeel@vibes.se>
 ---
  src/configure_Dialog.ui | 74 +++++++++++++++++++++++++++++++++++++++++
- src/configuredialog.cpp | 32 ++++++++++++++++++
+ src/configuredialog.cpp | 38 +++++++++++++++++++++
  src/settings.cpp        | 61 +++++++++++++++++++++++++++++++++
  src/settings.h          | 18 ++++++++++
  src/tdepowersave.cpp    | 26 +++++++++++++++
  src/tdepowersave.h      |  2 ++
- 6 files changed, 213 insertions(+)
+ 6 files changed, 219 insertions(+)
 
 diff --git a/src/configure_Dialog.ui b/src/configure_Dialog.ui
 index 1c87966..b4eacc4 100644
@@ -125,10 +125,10 @@ index 1c87966..b4eacc4 100644
                      <widget class="TQLayoutWidget" row="0" column="0">
                          <property name="name">
 diff --git a/src/configuredialog.cpp b/src/configuredialog.cpp
-index 300e85d..04e30e9 100644
+index 300e85d..b986ba0 100644
 --- a/src/configuredialog.cpp
 +++ b/src/configuredialog.cpp
-@@ -276,6 +276,19 @@ void ConfigureDialog::setIcons(){
+@@ -276,6 +276,25 @@ void ConfigureDialog::setIcons(){
  	tB_scheme->setItemIconSet( 4 ,SmallIcon("processor", TQIconSet::Automatic));
  	tB_scheme->setItemIconSet( 5 ,SmallIcon("misc", TQIconSet::Automatic));
  
@@ -142,13 +142,19 @@ index 300e85d..04e30e9 100644
 +		connect( cB_networkProfile, TQ_SIGNAL(activated(int)),
 +		         this, TQ_SLOT(scheme_valueChanged()) );
 +	} else {
++		// TQToolBox::removeItem() neither deletes nor hides the page: it
++		// reparents it onto the toolbox at (0,0), where it would be drawn
++		// over the first scheme page. Hide it rather than delete it, since
++		// the later uses ask ncfgAvailable() again and must not find a
++		// deleted combo if ncfg appears while the dialog is open.
 +		tB_scheme->removeItem( networking );
++		networking->hide();
 +	}
 +
  	tB_general->setItemIconSet( 0, SmallIcon( "scheme_powersave", TQIconSet::Automatic));
  	tB_general->setItemIconSet( 1, SmallIcon( "button", TQIconSet::Automatic));
  	tB_general->setItemIconSet( 2, SmallIcon( "scheme_power", TQIconSet::Automatic));
-@@ -656,6 +669,19 @@ void ConfigureDialog::setConfigToDialog( int schemeID ){
+@@ -656,6 +675,19 @@ void ConfigureDialog::setConfigToDialog( int schemeID ){
  		}
  	}
  
@@ -168,7 +174,7 @@ index 300e85d..04e30e9 100644
  	if (actions.count() < 1) {
  		cB_autoSuspend->setEnabled(false);
  		cB_autoSuspend->setChecked(false);
-@@ -846,6 +872,12 @@ void ConfigureDialog::saveSchemeSettings() {
+@@ -846,6 +878,12 @@ void ConfigureDialog::saveSchemeSettings() {
  		}
  	}
  

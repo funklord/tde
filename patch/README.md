@@ -41,8 +41,11 @@ is what was built into the installed `+lidfix` packages and tested on the
 live desktop. The master twin was produced by cherry-pick. On 2026-11-12 it was
 compiled unit by unit against TDE 14.2 headers, which found two
 `r14.1.x` include names in 0007 that `master` does not have. They are
-corrected, and every changed unit now compiles. It has still not been
-linked or run.
+corrected, and every changed unit now compiles. On 2026-11-13 it was
+built whole, linked and run against the installed TDE 14.2. The run found
+0007 drawing its Networking page over the first scheme page when `ncfg`
+is absent; 0007 is fixed on both lines (project.md, *The master
+tdepowersave series, linked and run*).
 
 The panel-off branch is stacked on the docked branch, so this series
 already contains every commit of `feat/lid-docked`; there is no separate

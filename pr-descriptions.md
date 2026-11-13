@@ -12,7 +12,9 @@ added:
 
 PR 12's commit is 0008 re-anchored onto stock `master` (see its note), and
 it carries 0008's sign-off over unchanged. Confirm that is still yours to
-give for the re-anchored form.
+give for the re-anchored form. The same applies to PR 11's commit (0007),
+which gained six lines on 2026-11-13 under its existing sign-off: it now
+hides the Networking page when ncfg is absent.
 
 Each fix is developed on `master` and backported to `r14.1.x`; the
 diffstats match, which is what says the backport changed nothing. Whether
@@ -511,7 +513,8 @@ Nothing links netcfgd. `findExe("ncfg")` decides whether the feature
 exists at all; `ncfg profile list` fills the combo and `ncfg profile set`
 switches, run without a shell so a configured name cannot be interpreted.
 The "Networking" page in the per-scheme toolbox appears only when ncfg is
-found. The choice is stored by profile name, so it survives the list
+found; otherwise it is removed and hidden, since TQToolBox's `removeItem()`
+leaves the page drawn at the toolbox's corner. The choice is stored by profile name, so it survives the list
 changing, and an unknown name falls back to not switching. Switching is
 silent, since schemes flip on every AC/battery change; a failure is a text
 line on the page, cleared on the next success.
@@ -525,6 +528,9 @@ Verified on a live TDE 14.1.6 desktop: with ncfg present, switching to a
 scheme armed with a profile changed `ncfg profile get` to that profile. The
 commit applies alone to `master` and `r14.1.x`, and compiles on `master`
 (its `r14.1.x` include names were corrected for `master` on 2026-11-12).
+On `master` it was built, linked and run against TDE 14.2 on a nested
+display, with ncfg absent (the page is hidden) and with a stand-in ncfg
+(the page appears last in the toolbox).
 
 ---
 
