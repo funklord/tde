@@ -2042,6 +2042,20 @@ as with PR 12.
 **Not reached:** the lid paths (this machine has no lid), DPMS (Xvfb has
 none), and the tray, which needs a system tray on the nested display.
 
+**Static checks add nothing against stock (2026-11-13).** The master
+series was built with `-Wall -Wextra` beside stock `origin/master`, and
+both give the same 47 warnings by file and message. cppcheck
+(`--enable=warning,performance,portability`) gives the same 26 findings
+for both. The same holds for the three changed tdebase files: the lock
+FIFO and resize fixes, the sftp fix, and the XDS drop. cppcheck needs
+`-Dslots= -Dsignals=protected -DTQ_OBJECT=` and no `.moc` on the include
+path. Without those it stops on `unknownMacro` or a `.moc` `#error` and
+skips `screen.cpp`, `tdepowersave.cpp` and every file including their
+headers, while still reporting a tidy, equal count. An out-of-bounds
+write planted in `screen.cpp`, `konq_operations.cpp` and
+`lockprocess.cpp` was reported each time, so the zeros cover the
+series' own code.
+
 ### The lock FIFO fix, built and run on master (2026-11-13)
 
 The same root drives tdebase. With `-DBUILD_KDESKTOP=ON
