@@ -9,6 +9,7 @@ It builds nothing of its own.
 
 ## Scope and layout
 
+    README.md           what the fixes are worth, for a reader new to TDE
     project.md          this file -- authoritative over the code
     code-style.md       copied from the global source
     Makefile            upstream / style / hooks; there is nothing to compile
