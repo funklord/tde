@@ -739,6 +739,14 @@ deliberate click, unlike the per-scheme switches that fire on every
 AC/battery change and are silent. `+lidfix9`. Its own upstream PR, sharing
 the lid branches only locally, like findings 10 and this one's siblings.
 
+**The idle half, run on master (2026-11-13).** It used the sandbox
+described under the autosuspend fix. The tray widget, which has no
+system tray to sit in, is mapped on screen with `xdotool` and the item
+checked from its menu, and a screenshot confirms the check mark. Under
+a one-minute autosuspend, no countdown appears and the scratch
+`/sys/power/state` is untouched after 90 s idle. The same build with
+the toggle off suspends at the minute (the autosuspend run's control).
+
 ## Open: tdelauncher lost its socket once, cause unknown
 
 2026-09-15, eight days into a session. Every attempt to LAUNCH something
