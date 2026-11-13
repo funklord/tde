@@ -1733,9 +1733,15 @@ not blank a session that is not the active one. That check runs through
 `org.freedesktop.ConsoleKit` and uses whichever registers on D-Bus
 (`onServiceRegistered`, `checkActiveSession` at `dbusInterface.cpp:374`):
 
-- **systemd** -> logind. This machine, tested.
+- **systemd** -> logind. Tested on the Dell.
 - **elogind** (Artix, Gentoo, many Devuan setups) -> the same `login1` path,
   including the lid-switch inhibitor at `dbusInterface.cpp:298`.
+  **Measured on `ml350g6-01` (Devuan, elogind 255), 2026-11-13**, by
+  issuing the gate's own calls read-only for the running tdepowersave:
+  `GetSessionByPID` gives `session/c1`, its `Seat` is `seat0`, and
+  `seat0`'s `ActiveSession` is `c1`, so `checkActiveSession()` returns
+  true. `ListInhibitors` shows `TDEPowersave` holding a `block` on
+  `handle-power-key:handle-suspend-key:handle-hibernate-key:handle-lid-switch`.
 - **ConsoleKit2** (classic Devuan) -> the ConsoleKit branch. Works, and takes
   no inhibitor -- which it does not need, because without logind nothing else
   is claiming the lid switch to fight over.
@@ -1748,10 +1754,10 @@ work added any systemd coupling: the split and the checkbox sit inside the
 existing session gate and inherit its portability exactly; the session/seat
 dependency is upstream's and predates all of it. And the ConsoleKit path,
 while present in the source, is **not measured** -- there is no ConsoleKit on
-this box -- so "works on Devuan" is built-for, not observed. By the code it
-should, given ConsoleKit2 or elogind running and the session registered,
-which is the normal case; a real Devuan/ConsoleKit2 test is what turns
-*should* into *does*, and is the obvious thing to do first on that machine.
+any machine here -- so "works on ConsoleKit2" is built-for, not observed.
+elogind, the other systemd-free route, is now observed (above). By the code
+ConsoleKit2 should work too, given it is running and the session
+registered; a ConsoleKit2 machine is what turns *should* into *does*.
 
 **One distro-level caveat, not a code matter.** On a systemd-free box, make
 sure nothing else -- an `acpid` lid script, another power manager -- is also
@@ -2406,13 +2412,10 @@ via `dcop tdepowersave tdepowersaveIface do_setScheme Powersave` flipped
 to end. The test key was removed; `ncfg`'s runtime profile stays `offline`
 (it has no unset subcommand), a harmless runtime state, not a config.
 
-**Built and wired, not yet exercised live** (what remains): the inhibit
-toggle skipping the *idle* suspend/dim -- its lid-close half is confirmed,
-the idle half would need ~5 min idle with a real suspend at stake; and the
-lock-on-lid combo on a genuinely non-docked machine (the external unplugged).
-The lid half needs a lid, which `ml350g6-01` does not have. The idle half
-does not, so it could be exercised here, but only once the series is built
-and installed over the 14.2 preview.
+**Built and wired, not yet exercised live** (what remains): the lock-on-lid
+combo on a genuinely non-docked machine (the external unplugged), which
+needs a lid. The inhibit toggle's *idle* half, once listed here, was run on
+2026-11-13 on master with suspend sandboxed (finding 11).
 
 **Needs an external display, so unverified:** only finding 8's *automatic*
 mirror-crop policy, which is unbuilt. Every built docked path -- display-off,
