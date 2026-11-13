@@ -461,6 +461,33 @@ programs' windows (the taskbar, the system tray, klipper), but owners
 cannot name the requester. That still wants a per-process trace, which
 means instrumenting the live session. Cause not established.
 
+**A nested session did not reproduce it (2026-11-13), and that narrows
+it.** Each program ran as its own process on Xvfb `:9`, with stderr to
+its own file, in a PID namespace:
+
+- twin, kicker, klipper, kdesktop, kaccess, knotify, kmix, tdepowersave,
+  konqueror and konsole, with kded under tdeinit;
+- 15 rounds of konsole context menus, new tabs, selecting and copying
+  text, and tab-bar tooltips;
+- ten konsole windows that exit at once.
+
+No log held a BadWindow. The zero means something. A minimal
+TQApplication asking for a property on a nonexistent window prints, on
+the same Xvfb, exactly the live log's lines (`X Error: BadWindow
+(invalid Window parameter) 3`, `Major opcode: 20`) to its own stderr.
+So such an error would have been seen. A first control,
+`ksystraycmd --wid` with a bogus id, printed nothing, and is not one.
+
+Two leads are ruled out. The errors follow working hours: 509 between
+16:00 and 17:00 against 48 between 05:00 and 06:00, summed over the
+log, so they come from use and not from the screensaver or lock path.
+The live server has MIT-SCREEN-SAVER, so kdesktop's xautolock does not
+use `xautolock_diy.c`, whose XQueryTree and XSelectInput walk over
+every window would otherwise have matched opcodes 15 and 2. What
+remains is a trigger this churn lacked, such as long-lived state,
+another application, or a real window manager's timing, or a per-process
+trace of the live session.
+
 ### 7. `tdelfeditor -e` strips GNU_RELRO from every TDE binary -- FIXED in libr
 
 Found while packaging a TQt3 front end for netcfgd, where lintian reported
