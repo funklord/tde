@@ -1007,6 +1007,11 @@ Also open, and relevant:
   `mknod`, and every tdebase series here applies on top of it with
   `git am`.
 - **tdebase #16**, `feat/fix-suspend-code` (WIP) -- suspend/hibernate paths.
+  **Evaluated 2026-11-13: no overlap.** It is two commits from November
+  2018, on a base from February 2019, and they add the
+  freeze/standby/hybrid entries to the kicker menus and the ksmserver
+  shutdown dialog. None of those files is one our patches change. It is
+  stale rather than live work.
 
 None of these has been evaluated for correctness yet.
 
