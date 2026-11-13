@@ -22,6 +22,8 @@ everything it starts dies with it. Afterwards remove `/tmp/.X9-lock` and
     name "../escape.txt"  saved as dropdir/escape.txt, nothing above it
     source answers E      drop finishes, message queued, no file
     source answers F      falls through to the ordinary drop paths
+    name sent as format 32 declined; ordinary drop paths, no file
+                          (XDS_FORMAT32=1)
 
 The source sends two positions before dropping, as a moving pointer
 would. Qt3's views ignore a move that reports the same point as the

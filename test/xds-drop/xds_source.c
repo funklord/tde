@@ -94,8 +94,19 @@ int main(int argc, char **argv)
 
 	Window src = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 0, 0, 0);
 	XSelectInput(dpy, src, PropertyChangeMask);
-	XChangeProperty(dpy, src, a_xds, a_text, 8, PropModeReplace,
-	                (unsigned char *) argv[3], strlen(argv[3]));
+	if (getenv("XDS_FORMAT32")) {
+		/* A malformed offer: the name as 32-bit items. */
+		long packed[64] = { 0 };
+		size_t len = strlen(argv[3]);
+		if (len > sizeof(packed) - 1)
+			len = sizeof(packed) - 1;
+		memcpy(packed, argv[3], len);
+		XChangeProperty(dpy, src, a_xds, a_text, 32, PropModeReplace,
+		                (unsigned char *) packed, (len + 3) / 4);
+	} else {
+		XChangeProperty(dpy, src, a_xds, a_text, 8, PropModeReplace,
+		                (unsigned char *) argv[3], strlen(argv[3]));
+	}
 	XSetSelectionOwner(dpy, a_selection, src, CurrentTime);
 
 	long version = 0;

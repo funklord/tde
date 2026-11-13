@@ -25,11 +25,11 @@ requires.
 
 Link: https://www.freedesktop.org/wiki/Specifications/XDS/
 ---
- libkonq/konq_operations.cpp | 93 +++++++++++++++++++++++++++++++++++++
- 1 file changed, 93 insertions(+)
+ libkonq/konq_operations.cpp | 98 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 98 insertions(+)
 
 diff --git a/libkonq/konq_operations.cpp b/libkonq/konq_operations.cpp
-index 0897cc2c..4a8d8b0d 100644
+index 0897cc2c..f80e3f66 100644
 --- a/libkonq/konq_operations.cpp
 +++ b/libkonq/konq_operations.cpp
 @@ -37,6 +37,7 @@
@@ -40,7 +40,7 @@ index 0897cc2c..4a8d8b0d 100644
  #include <assert.h>
  #include <tdeapplication.h>
  #include <kipc.h>
-@@ -312,9 +313,101 @@ bool KonqOperations::askDeleteConfirmation( const KURL::List & selectedURLs, int
+@@ -312,9 +313,106 @@ bool KonqOperations::askDeleteConfirmation( const KURL::List & selectedURLs, int
      return true;
  }
  
@@ -79,6 +79,11 @@ index 0897cc2c..4a8d8b0d 100644
 +    if ( XGetWindowProperty( dpy, source, xdsProperty, 0, 1024, False, AnyPropertyType,
 +                             &type, &format, &count, &remaining, &data ) != Success || !data )
 +        return false;
++    if ( format != 8 )
++    {
++        XFree( data );
++        return false;
++    }
 +    TQString fileName = TQString::fromUtf8( (const char *) data, count );
 +    XFree( data );
 +

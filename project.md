@@ -2099,7 +2099,7 @@ XDS in the same place, so that is the prior art followed. One file-local
 helper runs first:
 
 - read the proposed name from `XdndDirectSave0` on the window that owns
-  `XdndSelection`;
+  `XdndSelection`, as 8-bit text only;
 - keep only its last path component, so the source cannot choose the
   directory;
 - ask before replacing an existing file;
@@ -2127,6 +2127,7 @@ the installed one through `LD_LIBRARY_PATH`, which
     name "../escape.txt"  saved as dropdir/escape.txt, nothing above it
     source answers E      drop finishes, message queued, no file
     source answers F      falls through to the ordinary paths
+    name as format 32     declined, ordinary paths, no file
 
 **Not exercised:** the overwrite question, a real XDS source such as
 File Roller (none is installed), and the `r14.1.x` build. Whether
