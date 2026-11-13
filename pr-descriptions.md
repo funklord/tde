@@ -317,10 +317,13 @@ make it the common case rather than the unusual one.
 
 ### Testing
 
-**Not runtime-tested.** The trigger is a dialog that declines to close,
-which has not been reproduced here. The change is a bound on an otherwise
-unbounded retry and lock-wait; it alters no behaviour on the path where the
-dialog does close.
+The trigger is a dialog that declines to close, which has not been
+reproduced, so the bounded branch is not runtime-tested. The ordinary
+path is. On `master`, with the screen locked and the unlock dialog open,
+a RandR resize from 1280x900 to 1600x1000 on a nested Xephyr completes
+with the patched locker exactly as with the unpatched one. The locker
+uses 0.14 s of CPU in the next 10 s and redraws the dialog centred on
+the new size.
 
 ---
 

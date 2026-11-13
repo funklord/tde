@@ -1348,6 +1348,24 @@ when its lid closes onto an external display. Disabling an output on lid
 close would turn this path from rare into certain, and it is the wrong
 order to make a known-fragile path routine and then fix it.
 
+**The ordinary resize path, run on master (2026-11-13).** Xvfb cannot
+resize; its RandR offers one size and refuses new modes. The test
+therefore used Xephyr, unpacked from `xserver-xephyr` into scratch, run
+as `:9 -resizeable` inside an Xvfb `:8` host, so `:0` was never
+involved. Resizing Xephyr's host window resizes `:9` through RandR.
+Each locker ran with `--forcelock` and had its unlock dialog open, and
+the screen was then grown from 1280x900 to 1600x1000. Everything ran in
+a PID namespace, so nothing outlived the run:
+
+    installed 14.2 locker   resize completes, 0.14 s CPU in the next 10 s
+    patched (master)        resize completes, 0.14 s CPU, dialog
+                            re-centred on the new size, still locked
+
+So the unlock dialog closes on resize as it should. The fix changes
+nothing on the path that is taken. The bounded branch needs a dialog
+that refuses to close, which this did not produce and which has still
+not been reproduced.
+
 ## Switching off the internal panel on lid close -- IMPLEMENTED
 
 **Written 2026-09-07** on `feat/lid-panel-off` (master) and
