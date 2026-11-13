@@ -584,9 +584,15 @@ lid hunk was anchored on. The exported version is re-anchored on stock's
 
 The lid-close half was verified on a live TDE 14.1.6 desktop: with the
 toggle on, closing the lid neither locked nor suspended the machine. That
-build also carried PR 4, so the panel itself still switched off. The idle half is
-built and wired but not exercised live. The standalone commit compiles on
-`master`.
+build also carried PR 4, so the panel itself still switched off. The
+standalone commit compiles on `master`.
+
+The idle half was run on `master` against TDE 14.2, on a nested display.
+`/sys/power/state` was replaced by a scratch file in a mount namespace,
+so that a suspend is only recorded. With a one-minute autosuspend, the
+same build suspends after an idle minute when the toggle is off. With
+"Do Not Suspend or Lock the Screen" checked from the tray menu, no
+countdown appears and no suspend is attempted in 90 s idle.
 
 ---
 
