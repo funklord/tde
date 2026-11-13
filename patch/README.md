@@ -20,7 +20,7 @@ changes, re-export it rather than editing the patches by hand.
     tdebase/fix-lock-resize-retry{,-r141x}/      the locker resize loop bound
     tdebase/fix-directory-mime-default{,-r141x}/ folders open in the file manager
     tdebase/fix-sftp-mtime{,-r141x}/             sftp copies keep their mtime
-                                                 (compiles: see project.md)
+                                                 (run on master: project.md)
 
     tdelibs/fix-formfactor-dmi-chassis{,-r141x}/ form factor from the SMBIOS
                                                  chassis type (compiles)

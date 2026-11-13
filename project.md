@@ -1768,7 +1768,7 @@ line to `~/.config/mimeapps.list` under `[Default Applications]`; the
 previous file is kept at `~/.config/mimeapps.list.before-tde-fix`. That is
 a local override and is independent of the packaged fix.
 
-## Files copied over sftp are dated 1970 -- FIXED, compiles, not run
+## Files copied over sftp are dated 1970 -- FIXED, run on master
 
 **Written 2026-11-12** on `fix/sftp-mtime` (master) and
 `fix/sftp-mtime-r141x`, exported to `patch/tdebase/fix-sftp-mtime{,-r141x}/`.
@@ -1799,11 +1799,46 @@ port, from scratch) and a one-shot libssh 0.11.5 probe stat one file:
 So against OpenSSH the old second atom was always 0, and the fix's guard
 leaves it out.
 
-**Compiles, not run.** The patched unit compiles to an object against
-the TDE 14.2 headers and the system libssh 0.11.5, and a sabotaged copy
-fails at the two changed identifiers. The mechanism is established from
-both source trees and matches the reported value exactly. Running the
-reproduction against a built slave is what confirms it.
+**Compiled first (2026-11-12).** The patched unit compiles to an object
+against the TDE 14.2 headers and the system libssh 0.11.5. A sabotaged
+copy fails at the two changed identifiers.
+
+**Run on master, 2026-11-13: the reproduction is fixed.** The slave was
+built with the scratch root from *Compiling against TDE 14.2*, using
+`-DBUILD_TDEIOSLAVES=ON -DWITH_SFTP=ON` and `make tdeio_sftp-module`.
+cmake also needs `libtirpc-dev` unpacked into the root, because
+`tdeioslave/` demands `rpc/rpc.h` whatever is enabled. The build
+resolves against the installed libraries with no undefined symbol. One
+file dated 2020-01-02 03:04:05 was then copied with `kfmclient copy
+sftp://...` from a private sshd on 127.0.0.1:22722 (key auth,
+`internal-sftp`), on `:9` with a private DCOP and `tdeinit`:
+
+    installed 14.2 slave   1970-01-01 01:00:00   content identical
+    patched slave          2020-01-02 03:04:05   content identical
+
+Only `TDEDIRS` differed between the two runs: the patched run puts a
+stage directory holding the built `tdeio_sftp.{so,la}` ahead of
+`/opt/trinity`. The installed slave cannot produce the 2020 date, so the
+second run did load the built one.
+
+**`~/.ssh` was not touched, and how that was arranged is worth
+reusing.** The slave writes `~/.ssh/known_hosts` for an unknown host and
+reads `~/.ssh/config`. libssh finds home with `getpwuid`, so setting
+`HOME` redirects nothing. The run therefore sits in an unprivileged
+namespace:
+
+    unshare -rm --pid --fork --kill-child --mount-proc bash -c \
+        "mount --bind <scratch>/.ssh $HOME/.ssh && \
+         exec unshare --user --map-user=$(id -u) --map-group=$(id -g) bash run.sh"
+
+The outer namespace is root, so it may mount. `mount(8)` refuses an
+unprivileged user even with the capability, so `--map-current-user`
+alone fails. The inner one maps back to the real uid, so `getpwuid`
+gives the real home with the scratch `.ssh` bound over it. The PID
+namespace is the cleanup: tdeinit daemonises, and every process dies
+with the namespace's init. The one thing it cannot reach is Xvfb's
+`/tmp/.X9-lock` and socket. They hold a namespace-internal PID and were
+removed by name.
 
 ## Compiling against TDE 14.2 without installing anything
 

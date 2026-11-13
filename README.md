@@ -55,8 +55,9 @@ in one person's packages.
 test status in `project.md`, under *Confirmed findings*. The stable-line
 tdepowersave and tdebase fixes have been built and run on a laptop in
 daily use. The master tdepowersave series has been built, linked and
-started against TDE 14.2. The other newer series have been compiled
-against 14.2 headers but not run. Nothing has been merged upstream yet.
+started against TDE 14.2, and the master lock FIFO and SFTP fixes were
+run there against the installed 14.2 binaries as controls. The other
+newer series have been compiled against 14.2 headers but not run. Nothing has been merged upstream yet.
 
 **Where upstream already has work in progress**, this project reuses it
 rather than competing with it: TDE's open pull requests #779 and #47 are

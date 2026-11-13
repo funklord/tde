@@ -429,8 +429,14 @@ came in with the backported slave in `fd94618b`.
 ### Testing
 
 Compiles against the 14.2 headers and libssh 0.11.5; a deliberately broken
-copy fails at the changed identifiers. **Not yet run**: the reproduction
-against a built slave is what confirms it.
+copy fails at the changed identifiers. Built on `master` and run against
+an OpenSSH 10.0 server, copying a file dated 2020-01-02 with `kfmclient
+copy sftp://...`:
+
+    installed 14.2 slave   copy dated 1970-01-01
+    patched slave          copy dated 2020-01-02, as the source
+
+The content was identical in both cases.
 
 ---
 
