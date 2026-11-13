@@ -1758,6 +1758,29 @@ Its own upstream PR, independent of the lid work it happens to share a
 branch with; it wants extracting to a clean
 `fix/autosuspend-cancel-on-activity` branch before submission.
 
+**Run on master against TDE 14.2, 2026-11-13, without a suspend being
+possible.** This machine is a shared server, so a cancel that failed
+would really have suspended it. The run therefore sits in an
+unprivileged mount and PID namespace. `/sys/power/state` and
+`/sys/power/disk` are scratch files bound over sysfs, and `/dev/null` is
+bound over `/run/dbus/system_bus_socket`. tdehw's `setPowerState()`
+writes the sysfs node first and returns, so a suspend becomes the word
+`mem` written into the scratch file, and logind cannot be reached at
+all. The harness refuses to start unless it reads the scratch marker
+back through `/sys/power/state` and finds no bus socket. Configuration:
+a one-minute autosuspend with a 30 s countdown, in a private `TDEHOME`
+on Xvfb `:9`. The mouse was moved 40 s in, with the countdown on screen
+(screenshotted each time):
+
+    patched, no activity          mem    the sandbox does suspend
+    installed 14.2, mouse moved   mem    the bug: activity ignored
+    patched, mouse moved          marker intact, countdown cancelled
+
+The real `/sys/power/state` read `freeze mem disk` throughout. The
+control is the installed `tdepowersave` (pre78), not `origin/master`
+minus 0013, so it differs by the other twelve commits as well. None of
+them touches the countdown.
+
 ## GTK applications opening a folder get Cervisia -- FIXED
 
 **Fixed 2026-09-08** on `fix/directory-mime-default` (master) and

@@ -405,6 +405,12 @@ Built and installed on a live TDE 14.1.6 desktop and confirmed by use: with
 the autosuspend countdown showing, moving the mouse cancels it and the
 machine stays awake; leaving the machine idle still suspends as before.
 
+Repeated on `master` against TDE 14.2 on a nested display, with
+`/sys/power/state` replaced by a scratch file in a mount namespace so
+that a suspend is only recorded. Without the change, moving the mouse
+during the countdown still suspends. With it, the countdown cancels.
+Left idle, it still suspends.
+
 ---
 
 ## PR 8 -- tdebase: `fix/sftp-mtime`
