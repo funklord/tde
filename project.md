@@ -1000,7 +1000,12 @@ Also open, and relevant:
   `mergeable=False`; superseded. Kept here only so it is not mistaken for
   current work.
 - **tdebase #653**, `feat/separate-tsak` (WIP) -- tsak is the other tenant
-  of `/tmp/tdesocket-global`, so it touches finding 1's territory.
+  of `/tmp/tdesocket-global`, so it might touch finding 1's territory.
+  **Evaluated 2026-11-13: it does not.** It is one commit, 31bdb77a,
+  splitting the `WITH_TSAK` and `BUILD_TSAK` build flags, with 10 lines in
+  7 files. No line of it names the socket directory, the FIFOs or
+  `mknod`, and every tdebase series here applies on top of it with
+  `git am`.
 - **tdebase #16**, `feat/fix-suspend-code` (WIP) -- suspend/hibernate paths.
 
 None of these has been evaluated for correctness yet.
