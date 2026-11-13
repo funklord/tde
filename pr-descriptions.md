@@ -79,6 +79,11 @@ display. Both cases start from a directory verified empty:
 Installed on a live TDE 14.1.6 desktop: the FIFOs now appear on locking,
 and the warning that fired 83 times per session fires not at all.
 
+On `master`, built against TDE 14.2 and run on a nested display beside
+the installed 14.2 `kdesktop_lock` as the control: stock still cannot
+create `/tmp/tdesocket-global/kdesktoplockcontrol-9`, and the patched
+locker creates both FIFOs 0600 in the per-user socket directory.
+
 ---
 
 ## PR 2 -- tdebase: `fix/tdm-session-class`

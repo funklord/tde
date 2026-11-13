@@ -177,6 +177,9 @@ Each carries the command that produced it, so it can be re-taken.
 **Fixed 2026-09-06** on `fix/lock-fifo-per-user` (master) and
 `fix/lock-fifo-per-user-r141x` (stable, built and tested). Not yet
 submitted upstream. The diagnosis below stands as the record of the fault.
+On 2026-11-13 the `master` fix was also built and run against TDE 14.2,
+with the installed locker as the control (*The lock FIFO fix, built and
+run on master*).
 
 The FIFOs now come from `TDEGlobal::dirs()->saveLocation("socket")`, the
 per-user per-host socket resource tdelibs creates mode 0700, and both are
@@ -1934,6 +1937,27 @@ as with PR 12.
 
 **Not reached:** the lid paths (this machine has no lid), DPMS (Xvfb has
 none), and the tray, which needs a system tray on the nested display.
+
+### The lock FIFO fix, built and run on master (2026-11-13)
+
+The same root drives tdebase. With `-DBUILD_KDESKTOP=ON
+-DBUILD_LIBKONQ=ON` and nothing else, `make kdesktop_lock` builds the
+locker on `origin/master` with the FIFO and resize fixes applied. Both
+the stock and the patched locker were run with `--dontlock` on `:9`,
+with a private DCOP and `TDEHOME`.
+
+    stock (installed 14.2)  Warning: unable to create control socket
+                            '/tmp/tdesocket-global/kdesktoplockcontrol-9'
+    patched                 prw------- kdesktoplockcontrol-9
+                            prw------- kdesktoplockcontrol_out-9
+                            in /tmp/tdesocket-funk, both open in the process
+
+So finding 1 is live on this machine, and the fix works against TDE 14.2
+as it did on 14.1.6. The run left both FIFOs in the live user's socket
+directory, because the locker was killed rather than unlocked. They are
+named for display 9, so they cannot collide with `:0`'s, and they were
+removed by name afterwards. The resize bound was compiled but not
+exercised.
 
 ## Requested: Konqueror accepting XDS drops -- not started
 
