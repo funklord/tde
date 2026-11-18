@@ -1,0 +1,96 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Wed, 18 Nov 2026 20:48:16 +0100
+Subject: [PATCH] tderandr: apply a hotplug rule only when all its conditions
+ hold
+
+applyHotplugRules() scored each rule by how many of its outputs were in
+the requested state and applied the highest score, without requiring
+the rest to hold. So a rule that is false still wins whenever nothing
+scores higher:
+
+- a single "docked" rule {internal connected, external connected} is
+  applied after the external display is unplugged, since the internal
+  output alone scores 1;
+- a "laptop" rule {internal connected} whose one condition holds loses
+  to a "docked" rule {internal connected, external connected, other
+  disconnected} with one false condition, which scores 2.
+
+Apply a rule only when every output it names is in the state it asks
+for, and among those prefer the rule naming the most outputs, as
+before. An output that is not present at all counts as disconnected.
+Rules covering every combination, the case the score was built for,
+choose exactly as they did.
+
+Measured with tdeinit_displayconfig on an Xorg dummy-driver server
+(DUMMY0 connected, DUMMY1 disconnected): before, both cases above
+applied the docked profile; after, the first applies nothing and the
+second the laptop profile. A rule that fully holds, a rule that does
+not hold at all, and a complete laptop/docked pair with the second
+output connected behave the same before and after.
+---
+ tderandr/libtderandr.cpp | 41 ++++++++++++++++++++++------------------
+ 1 file changed, 23 insertions(+), 18 deletions(-)
+
+diff --git a/tderandr/libtderandr.cpp b/tderandr/libtderandr.cpp
+index 1900f8503..4fba0b80a 100644
+--- a/tderandr/libtderandr.cpp
++++ b/tderandr/libtderandr.cpp
+@@ -1057,31 +1057,36 @@ void KRandrSimpleAPI::applyHotplugRules(TQString kde_confdir) {
+ 	SingleScreenData *screendata = NULL;
+ 	HotPlugRulesList::Iterator it;
+ 	for (it=rules.begin(); it != rules.end(); ++it) {
+-		// Compare each rule against the current display configuration
+-		// It an output matches the state given in the rule, increment matchCount
++		// A rule applies only if every output it names is in the state the
++		// rule asks for. Among the rules that apply, the one naming the most
++		// outputs is the most specific and wins. Counting matching outputs
++		// alone would let a rule with a false condition win, e.g. a "docked"
++		// rule being applied after the external display was unplugged.
++		// An output that is not present at all counts as disconnected.
+ 		HotPlugRule rule = *it;
++		int conditionCount = 0;
+ 		int matchCount = 0;
+ 		int numberOfScreens = screenInfoArray.count();
+-		for (i=0;i<numberOfScreens;i++) {
+-			screendata = screenInfoArray.at(i);
+-			for (j=0; j<(*it).outputs.count(); j++) {
+-				if ((*it).outputs[j] != screendata->screenUniqueName) {
+-					continue;
+-				}
+-				if ((*it).states[j] == HotPlugRule::Connected) {
+-					if (screendata->screen_connected) {
+-						matchCount++;
+-					}
+-				}
+-				else if ((*it).states[j] == HotPlugRule::Disconnected) {
+-					if (!screendata->screen_connected) {
+-						matchCount++;
+-					}
++		for (j=0; j<(*it).outputs.count() && j<(*it).states.count(); j++) {
++			int state = (*it).states[j];
++			if (state != HotPlugRule::Connected && state != HotPlugRule::Disconnected) {
++				continue;
++			}
++			conditionCount++;
++			bool connected = false;
++			for (i=0;i<numberOfScreens;i++) {
++				screendata = screenInfoArray.at(i);
++				if ((*it).outputs[j] == screendata->screenUniqueName) {
++					connected = screendata->screen_connected;
++					break;
+ 				}
+ 			}
++			if (connected == (state == HotPlugRule::Connected)) {
++				matchCount++;
++			}
+ 		}
+ 
+-		if (matchCount > bestRuleMatchCount) {
++		if (matchCount == conditionCount && matchCount > bestRuleMatchCount) {
+ 			bestRuleMatchCount = matchCount;
+ 			bestRule = rule.profileName;
+ 		}
+-- 
+2.47.3
+

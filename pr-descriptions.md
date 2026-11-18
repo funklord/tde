@@ -5,8 +5,8 @@ Ready to paste into `mirror.git.trinitydesktop.org`. One per branch pair.
 **Before submitting**, check each commit carries your `Signed-off-by:` --
 TDE carries the DCO and that line is a statement about provenance that only
 its author can make. PRs 1 to 7 carry it since the re-export of
-2026-09-26. **PRs 8, 9 and 10, written 2026-11-12, and PR 13, written
-2026-11-13, do not**, and need it added:
+2026-09-26. **PRs 8, 9 and 10, written 2026-11-12, PR 13, written
+2026-11-13, and PR 14, written 2026-11-18, do not**, and need it added:
 
     git commit --amend -s          # on each branch, master and r14.1.x
 
@@ -657,3 +657,51 @@ Not tested: the overwrite question, a real XDS source, and the
 `r14.1.x` build, which carries the same change.
 
 ---
+
+---
+
+## PR 14 -- tdelibs: `fix/hotplug-rule-all-conditions`
+
+**Title:** `tderandr: apply a hotplug rule only when all its conditions hold`
+
+A hotplug rule says "if these outputs are connected and those are not,
+apply this display profile". `applyHotplugRules()` scored each rule by
+how many of its outputs were in the requested state and applied the
+highest score, without requiring the others to hold. So a rule whose
+conditions are false still wins whenever nothing scores higher:
+
+- a single "docked" rule {internal connected, external connected} is
+  applied after the external display is unplugged, because the internal
+  output alone scores 1;
+- a "laptop" rule {internal connected}, which holds, loses to a "docked"
+  rule {internal connected, external connected, other disconnected} with
+  one false condition, which scores 2.
+
+The fix applies a rule only when every output it names is in the state
+it asks for. Among those, the rule naming the most outputs still wins,
+as before. An output that is not present at all counts as disconnected.
+Rules covering every combination, which is the case the score was built
+for, choose exactly as they did.
+
+This one function is shared by `tdeinit_displayconfig` (at login),
+`tderandrtray` (on each monitor change) and tdm (at the greeter), so
+all three are fixed together. No header changes.
+
+### Testing
+
+The installed `tdeinit_displayconfig` was run against a private Xorg
+using the dummy video driver, whose outputs report a real connection
+state. The patched function was preloaded over the installed
+`libtderandr`, so the same binary was the control:
+
+    case                                  stock    patched
+    one rule that holds                   docked   docked
+    one rule that does not hold           none     none
+    docked {D0 C, D1 C}, D1 unplugged     docked   none
+    laptop {D0 C} vs docked 3 conditions  docked   laptop
+    laptop/docked pair, unplugged         laptop   laptop
+    laptop/docked pair, plugged           docked   docked
+    docked {D0 C, D1 C}, plugged          docked   docked
+
+Not tested: a real hotplug, which the dummy driver cannot unplug, and
+the `r14.1.x` build, which carries the same change.

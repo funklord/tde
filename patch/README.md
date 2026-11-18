@@ -26,6 +26,10 @@ changes, re-export it rather than editing the patches by hand.
 
     tdelibs/fix-formfactor-dmi-chassis{,-r141x}/ form factor from the SMBIOS
                                                  chassis type (run on master)
+    tdelibs/fix-hotplug-rule-all-conditions{,-r141x}/
+                                                 a display hotplug rule
+                                                 applies only when it holds
+                                                 (run on master)
 
     libr/fix-keep-relro-and-symbols{,-r141x}/    RELRO and .symtab survive a
                                                  libr rewrite (built, tested)

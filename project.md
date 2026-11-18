@@ -596,21 +596,47 @@ Three symptoms, one absence:
   not proven for a plain same-resolution mirror, but any mirror shares the
   one-origin property the driver mishandled.
 
-The unifying fact is that TDE R14.1 has no component that owns display
-policy across events -- the "display switcher daemon" that newer desktops
-run. `tderandrtray` reacts to change events but applies no chosen policy;
-hand-`xrandr` cannot stand in, because the event that breaks it is the same
-event that would need to re-apply it.
+**Corrected 2026-11-18: TDE has the component, and it was never
+configured.** This entry said R14.1 had no component owning display
+policy across events, and that `tderandrtray` applied no chosen policy.
+Both readings were of an unconfigured system. Since 2013 (and on
+`r14.1.x`), the Displays control module (`kcontrol/displayconfig`)
+saves named **profiles** -- each output's mode, position, primary flag,
+on or off -- under `displayconfig/<name>` in the user's config, and
+**hotplug rules** in `displayglobals`: "these outputs connected, those
+not -> this profile". Three places apply them through
+`KRandrSimpleAPI::applyHotplugRules()` in tdelibs:
 
-**Whose decision, and the options, because this is a feature rather than a
-fix.** A daemon that on each RandR change picks a policy -- docked: external
-primary, internal mirrored or off; undocked: internal only -- is the thing
-wanted, and the copyright holder said earlier this is plausibly
-tdepowersave's job since nothing else holds it. That is a real piece of
-design, not a setting, and it is not started here without being asked for.
-`autorandr` exists and does exactly this generically, at the cost of a
-per-machine dependency and of not being TDE's own. Left open for a
-deliberate decision.
+- `tdeinit_displayconfig`, at login;
+- `tderandrtray`, on every monitor device change (`deviceChanged()`);
+- tdm, at its greeter.
+
+All of it is gated on `EnableDisplayControl` in `displayglobals`, off
+by default. The Dell had no `displayglobals`, so every symptom above is
+what the default produces, not a missing component. So the "daemon on
+each RandR change" this entry asked for already exists: a docked rule
+and an undocked rule, each pointing at a saved profile.
+
+Two things are still unknown, because they need a two-output machine.
+The Dell is retired and `ml350g6-01` has one output.
+
+- **Does `deviceChanged()` fire on a real dock and undock?** It hangs off
+  tdehw's Monitor device events, which come from udev, not from
+  RandR.
+- **Can a profile express mirror-crop?** That is both outputs at the
+  origin, in different modes. The file format can: `AbsXPos=0` on both
+  enabled outputs, each with its own pixel count. Whether the module's
+  drag-to-arrange UI can save it is unchecked. Profiles also map
+  `SCREEN n` to the n-th RandR output by position rather than by name,
+  so a profile is only good for the machine it was saved on.
+
+The rule matcher itself was wrong, and is now fixed (finding 12). A
+rule with a false condition could be applied.
+
+The options recorded before the correction, kept because they are still
+the alternatives: a policy daemon in tdepowersave (the holder's earlier
+suggestion, now unnecessary unless the module proves unable to express
+the policy), and `autorandr`, generic but per-machine and not TDE's own.
 
 **The policy the holder wants, specified 2026-10-02.** The earlier text
 left the policy open; it is now decided, and it is a **mirror, not an
@@ -640,11 +666,11 @@ the decision, which is the holder's to make for TDE; it is noted so a future
 implementer does not "correct" the policy to extend believing that is the
 saner default. The policy to build is mirror-crop as above.
 
-This sharpens the open feature rather than closing it: the daemon that owns
-display policy across RandR events now has a concrete rule to apply on
-connect and on disconnect. What remains unbuildable-here is unchanged --
-the switching only exercises on a real connect/disconnect and across a
-reboot with the external present, which is the wall finding 8 opens with.
+The policy is now a configuration for TDE's own profiles and hotplug
+rules rather than code to write (see the correction above): a
+`mirror-crop` profile for "external connected" and a laptop-only one for
+"external disconnected". Trying it needs a laptop with an external
+display, and that is the same wall this finding opens with.
 
 **What was NOT done, deliberately:** no `autorandr` install, no
 `/etc/trinity/tdm/Xsetup` edit, no persisted `xrandr` -- those fix one
@@ -773,6 +799,61 @@ checked from its menu, and a screenshot confirms the check mark. Under
 a one-minute autosuspend, no countdown appears and the scratch
 `/sys/power/state` is untouched after 90 s idle. The same build with
 the toggle off suspends at the minute (the autosuspend run's control).
+
+### 12. A display hotplug rule with a false condition can be applied -- FIXED
+
+Found 2026-11-18 while correcting finding 8. `applyHotplugRules()`
+(`tdelibs/tderandr/libtderandr.cpp`) scored each rule by how many of its
+outputs were in the state the rule asks for, and applied the highest
+score without requiring the rest to hold. So a single "docked" rule
+{internal connected, external connected} is applied after unplugging,
+because the internal output alone scores 1. And a "laptop" rule that
+holds loses to a "docked" rule with more conditions, one of them false.
+A complete laptop/docked pair, which is what the score was built for,
+chose correctly; anything less complete did not.
+
+**Fixed** on `fix/hotplug-rule-all-conditions` (master, `b1f08483f`) and
+its `-r141x` twin. A rule now applies only when every output it names is
+in its state; among those, the most specific wins as before, and an
+absent output counts as disconnected. Exported to
+`patch/tdelibs/fix-hotplug-rule-all-conditions{,-r141x}/`, PR 14.
+
+**Run on this machine, against the installed 14.2 library, as
+`test/hotplug-rules/`.** The installed `tdeinit_displayconfig` ran on a
+private Xorg with the dummy video driver. That driver's 16 outputs
+report a real connection state: `DUMMY0` starts connected, and enabling
+another marks it connected, though nothing marks it disconnected again.
+The patched function is preloaded over the installed library, so the
+same binary is control and subject. Stock fails exactly the two cases
+above and passes the other five. Patched passes all seven, including a
+complete pair both unplugged and plugged in. The table is in the test's
+README. The `r14.1.x` twin is a clean cherry-pick and has not been
+compiled.
+
+TDE names outputs `:0:<name>` whatever the display (a FIXME in
+`readCurrentDisplayConfiguration()`). A rule naming `DUMMY0` bare
+matched nothing, and the first run's positive control caught that.
+
+**An incident in the first run, recorded so it is not repeated.** Xorg
+started as the user from inside the live session opened the seat
+through libseat's logind backend. That **took control of session `c1`**
+for a few seconds, and it then tried to take `/dev/dri/card0` (busy, so
+refused). elogind restores a VT's mode when its controller lets go, so
+the live VT7 may have been reset to text mode when that Xorg exited. The
+session still reported active and its Xorg kept running. Nothing on the
+desktop was looked at, since `:0` is not touched from here. The harness
+now runs Xorg with no system bus, an empty `/dev/dri`, libseat's `noop`
+backend and a private `/tmp`. **Never start Xorg from this session
+without those.** Xvfb and Xephyr never open a seat, which is why every
+earlier nested run was safe.
+
+**And earlier runs left files in the live user's runtime directories.**
+The 2026-11-13 nested sessions set `TDEHOME` but not `HOME` or `/tmp`.
+They left `tdeinit-:9` sockets and eight dead launcher slave sockets in
+`/tmp/tdesocket-funk`, and `~/.DCOPserver_ml350g6-01_:9` in `$HOME`.
+None of them had a listener (`ss -xlp`), and all were removed by name on
+2026-11-18. `test/hotplug-rules` avoids this with its private `/tmp` and
+`HOME`.
 
 ## Open: tdelauncher lost its socket once, cause unknown
 
@@ -2428,7 +2509,8 @@ needs a lid. The inhibit toggle's *idle* half, once listed here, was run on
 2026-11-13 on master with suspend sandboxed (finding 11).
 
 **Needs an external display, so unverified:** only finding 8's *automatic*
-mirror-crop policy, which is unbuilt. Every built docked path -- display-off,
+mirror-crop policy. Since 2026-11-18 that is a configuration of TDE's
+own display profiles and hotplug rules, not code still to write. Every built docked path -- display-off,
 light-only, docked lock -- is now verified above.
 
 `verify-fixes.sh` checks only the original three fixes; the combo,

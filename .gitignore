@@ -32,3 +32,6 @@ __pycache__/
 # Built and written by test/xds-drop.
 /test/xds-drop/xds_source
 /test/xds-drop/out/
+
+# Fetched and written by test/hotplug-rules.
+/test/hotplug-rules/out/
