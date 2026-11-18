@@ -3,11 +3,13 @@
 # display :9, with libkonq taken from LIBDIR ahead of /opt/trinity/lib, and
 # drop a file onto the view from xds_source.
 #
-# It re-executes itself inside an unprivileged PID namespace, mapped back to
-# the calling user, so every process started here -- Xvfb, dcopserver,
-# tdeinit's daemons, konqueror -- dies when it exits. The only thing the
-# namespace cannot reach is Xvfb's /tmp/.X9-lock and socket, which hold a
-# namespace-internal PID; remove them by name afterwards.
+# It re-executes itself inside unprivileged user, mount and PID namespaces,
+# mapped back to the calling user, so every process started here -- Xvfb,
+# dcopserver, tdeinit's daemons, konqueror -- dies when it exits. /tmp is a
+# private tmpfs and HOME is under out/, so the X lock, tdeinit's sockets in
+# /tmp/tdesocket-$USER and dcopserver's ~/.DCOPserver_* files go with it.
+# Without that, runs on 2026-11-13 left dead :9 sockets in the live user's
+# socket directory and a :9 DCOP address in their home.
 #
 # XDS_NAME sets the proposed file name, XDS_ANSWER forces the source's
 # reply (S, F or E). No loops except one bounded wait.
@@ -15,14 +17,15 @@ set -u
 LIBDIR=$1; LABEL=$2
 HERE=$(cd "$(dirname "$0")" && pwd)
 if [ -z "${XDS_IN_NS:-}" ]; then
-	exec unshare -r --pid --fork --kill-child --mount-proc \
+	exec unshare -r -m --pid --fork --kill-child --mount-proc \
+		bash -c 'mount -t tmpfs tmpfs /tmp && exec "$@"' sh \
 		env XDS_IN_NS=1 unshare --user --map-user="$(id -u)" \
 		--map-group="$(id -g)" bash "$0" "$@"
 fi
 [ "${DISPLAY:-}" = ":0" ] && unset DISPLAY
 OUT=$HERE/out/$LABEL
-rm -rf "$OUT"; mkdir -p "$OUT/tdehome" "$OUT/dropdir"
-export TDEHOME=$OUT/tdehome PATH=/opt/trinity/bin:$PATH
+rm -rf "$OUT"; mkdir -p "$OUT/home" "$OUT/tdehome" "$OUT/dropdir"
+export HOME=$OUT/home TDEHOME=$OUT/tdehome PATH=/opt/trinity/bin:$PATH
 export LD_LIBRARY_PATH=$LIBDIR:/opt/trinity/lib
 Xvfb :9 -screen 0 1280x900x24 > "$OUT/xvfb.log" 2>&1 &
 n=0

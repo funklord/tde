@@ -10,9 +10,10 @@ a chosen directory ahead of the installed one, and drops onto the view.
     make test LIBKONQ=<dir holding the libkonq.so.4 under test>
     make test                       # the installed libkonq, the control
 
-The harness runs itself inside an unprivileged PID namespace, so
-everything it starts dies with it. Afterwards remove `/tmp/.X9-lock` and
-`/tmp/.X11-unix/X9` by name: they hold a PID from inside the namespace.
+The harness runs itself inside unprivileged user, mount and PID
+namespaces with a private `/tmp` and `HOME`, so everything it starts dies
+with it and nothing it writes reaches the live user's socket directory
+or home. The X lock goes with the private `/tmp`.
 
 ## Result, 2026-11-13 (tdebase master, TDE 14.2 installed)
 
