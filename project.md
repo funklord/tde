@@ -632,9 +632,14 @@ The Dell is retired and `ml350g6-01` has one output.
   This runs only while `tderandrtray` is running in the session.
   Triggering a change event needs root here.
 - **Can a profile express mirror-crop?** That is both outputs at the
-  origin, in different modes. The file format can: `AbsXPos=0` on both
-  enabled outputs, each with its own pixel count. Whether the module's
-  drag-to-arrange UI can save it is unchecked. Profiles also map
+  origin, in different modes. **A profile file can, measured
+  2026-11-18.** On the dummy server, a profile with `DUMMY0` primary at
+  1024x768 and `DUMMY1` at 800x600, both at `AbsXPos=0`/`AbsYPos=0`, was
+  applied through a hotplug rule by the installed
+  `tdeinit_displayconfig`. It left a 1024x768 framebuffer with both
+  outputs at `+0+0`, the smaller showing the top-left crop. That is the
+  holder's policy exactly. Whether the module's drag-to-arrange UI can
+  save it is unchecked. A hand-written file works regardless. Profiles also map
   `SCREEN n` to the n-th RandR output by position rather than by name,
   so a profile is only good for the machine it was saved on.
 
