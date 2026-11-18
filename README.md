@@ -49,9 +49,10 @@ in one person's packages.
   coming back; a tray toggle that suspends power management for a
   while; folders opened from GTK programs that went to Cervisia instead
   of the file manager; SFTP copies dated 1970; display hotplug rules
-  that switched to a "docked" arrangement after the dock was unplugged;
-  and `tdelfeditor`
-  stripping `GNU_RELRO` from every binary it edits, fixed in libr.
+  that switched to a "docked" arrangement after the dock was unplugged,
+  and saved display profiles that crashed the display setup when a
+  dock's outputs were gone; and `tdelfeditor` stripping `GNU_RELRO`
+  from every binary it edits, fixed in libr.
 - **Drops from archives and remote sources.** Konqueror accepts X
   Direct Save, so a file dragged out of an archive manager or a remote
   browser is saved where it is dropped, as it already is in Dolphin,

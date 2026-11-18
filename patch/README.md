@@ -30,6 +30,10 @@ changes, re-export it rather than editing the patches by hand.
                                                  a display hotplug rule
                                                  applies only when it holds
                                                  (run on master)
+    tdelibs/fix-display-profile-output-bounds{,-r141x}/
+                                                 a profile with more screens
+                                                 than outputs no longer
+                                                 crashes (run on master)
 
     libr/fix-keep-relro-and-symbols{,-r141x}/    RELRO and .symtab survive a
                                                  libr rewrite (built, tested)

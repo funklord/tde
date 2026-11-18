@@ -6,7 +6,7 @@ Ready to paste into `mirror.git.trinitydesktop.org`. One per branch pair.
 TDE carries the DCO and that line is a statement about provenance that only
 its author can make. PRs 1 to 7 carry it since the re-export of
 2026-09-26. **PRs 8, 9 and 10, written 2026-11-12, PR 13, written
-2026-11-13, and PR 14, written 2026-11-18, do not**, and need it added:
+2026-11-13, and PRs 14 and 15, written 2026-11-18, do not**, and need it added:
 
     git commit --amend -s          # on each branch, master and r14.1.x
 
@@ -705,3 +705,37 @@ state. The patched function was preloaded over the installed
 
 Not tested: a real hotplug, which the dummy driver cannot unplug, and
 the `r14.1.x` build, which carries the same change.
+
+---
+
+## PR 15 -- tdelibs: `fix/display-profile-output-bounds`
+
+**Title:** `tderandr: do not index past the server's outputs when applying a profile`
+
+A display profile maps its n-th screen to the n-th RandR output.
+`applyDisplayConfiguration()`, `applyDisplayGamma()` and the DPMS loop
+walked the profile's screens while indexing the server's output array,
+with no bound. A profile saved with more outputs than the server now
+has read past the array and crashed whatever applied it. That happens
+with a dock's extra DP-MST outputs, another driver, or another machine.
+The callers are `tdeinit_displayconfig` at login, `tderandrtray` on a
+monitor change, and tdm's greeter.
+
+Each loop now stops at the smaller of the two counts. The screens that
+exist are applied as before, and the ones whose outputs are gone are
+left out. No header changes. It is independent of PR 14 and applies
+with or without it.
+
+### Testing
+
+Same setup as PR 14: the installed `tdeinit_displayconfig` on an Xorg
+dummy-driver server with 16 outputs, with the patched file preloaded:
+
+    20-screen profile    stock: SIGSEGV in applyDisplayConfiguration(),
+                         called from applyHotplugRules()
+                         patched: screen 0 applied, exit 0
+    16-screen profile    applied the same before and after
+
+The same file built unpatched still crashes, so the preload reproduces
+stock. With PR 14 applied as well, all eight cases of the test pass.
+Not tested: the `r14.1.x` build, which carries identical hunks.

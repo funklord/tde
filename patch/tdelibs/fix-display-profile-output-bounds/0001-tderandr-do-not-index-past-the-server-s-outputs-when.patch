@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Wed, 18 Nov 2026 20:59:01 +0100
+Subject: [PATCH] tderandr: do not index past the server's outputs when
+ applying a profile
+
+A display profile maps its n-th screen to the n-th RandR output, and
+applyDisplayConfiguration(), applyDisplayGamma() and the DPMS loop
+walked the profile's screens while indexing the server's output array.
+A profile saved with more outputs than the server now has -- a dock's
+extra outputs, another driver, another machine -- read past the array
+and crashed whatever applied it: tdeinit_displayconfig at login,
+tderandrtray on a monitor change, or tdm's greeter.
+
+Stop each loop at the smaller of the two counts. The screens that
+exist are applied as before; the ones whose outputs are gone are left
+out.
+
+Measured with tdeinit_displayconfig on an Xorg dummy-driver server
+with 16 outputs: a 20-screen profile crashed it (SIGSEGV in
+applyDisplayConfiguration(), called from applyHotplugRules()); with
+this change it applies the profile's first screen and exits 0. The
+same file built unpatched still crashes, and a 16-screen profile
+applies the same before and after.
+---
+ tderandr/libtderandr.cpp | 19 ++++++++++++-------
+ 1 file changed, 12 insertions(+), 7 deletions(-)
+
+diff --git a/tderandr/libtderandr.cpp b/tderandr/libtderandr.cpp
+index 94828e434..a38644fd9 100644
+--- a/tderandr/libtderandr.cpp
++++ b/tderandr/libtderandr.cpp
+@@ -658,7 +658,12 @@ bool KRandrSimpleAPI::applyDisplayConfiguration(TQPtrList<SingleScreenData> scre
+ 
+ 		randr_display = tqt_xdisplay();
+ 		randr_screen_info = read_screen_info(randr_display);
+-		for (i = 0; i < screenInfoArray.count(); i++) {
++		// A profile maps its n-th screen to the n-th output, and it may have
++		// been saved with outputs this server no longer has, such as a
++		// dock's. Indexing past the server's outputs crashed whatever
++		// applied the profile, so screens beyond them are left out here
++		// and in the other loops over a profile.
++		for (i = 0; i < screenInfoArray.count() && i < randr_screen_info->n_output; i++) {
+ 			screendata = screenInfoArray.at(i);
+ 			if (screendata) {
+ 				output_info = randr_screen_info->outputs[i]->info;
+@@ -714,7 +719,7 @@ bool KRandrSimpleAPI::applyDisplayConfiguration(TQPtrList<SingleScreenData> scre
+ 		randr_display = tqt_xdisplay();
+ 		randr_screen_info = read_screen_info(randr_display);
+ 		// Turn off all displays
+-		for (i = 0; i < screenInfoArray.count(); i++) {
++		for (i = 0; i < screenInfoArray.count() && i < randr_screen_info->n_output; i++) {
+ 			screendata = screenInfoArray.at(i);
+ 			output_info = randr_screen_info->outputs[i]->info;
+ 
+@@ -728,7 +733,7 @@ bool KRandrSimpleAPI::applyDisplayConfiguration(TQPtrList<SingleScreenData> scre
+ 		freeScreenInfoStructure(randr_screen_info);
+ 		randr_screen_info = read_screen_info(randr_display);
+ 		// Turn on the primary display
+-		for (i = 0; i < screenInfoArray.count(); i++) {
++		for (i = 0; i < screenInfoArray.count() && i < randr_screen_info->n_output; i++) {
+ 			screendata = screenInfoArray.at(i);
+ 			output_info = randr_screen_info->outputs[i]->info;
+ 
+@@ -744,7 +749,7 @@ bool KRandrSimpleAPI::applyDisplayConfiguration(TQPtrList<SingleScreenData> scre
+ 		freeScreenInfoStructure(randr_screen_info);
+ 		// Handle the remaining displays
+ 		randr_screen_info = read_screen_info(randr_display);
+-		for (i = 0; i < screenInfoArray.count(); i++) {
++		for (i = 0; i < screenInfoArray.count() && i < randr_screen_info->n_output; i++) {
+ 			screendata = screenInfoArray.at(i);
+ 			output_info = randr_screen_info->outputs[i]->info;
+ 
+@@ -768,7 +773,7 @@ bool KRandrSimpleAPI::applyDisplayConfiguration(TQPtrList<SingleScreenData> scre
+ 		}
+ 		freeScreenInfoStructure(randr_screen_info);
+ 		randr_screen_info = read_screen_info(randr_display);
+-		for (i = 0; i < screenInfoArray.count(); i++) {
++		for (i = 0; i < screenInfoArray.count() && i < randr_screen_info->n_output; i++) {
+ 			screendata = screenInfoArray.at(i);
+ 			output_info = randr_screen_info->outputs[i]->info;
+ 
+@@ -1107,7 +1112,7 @@ void KRandrSimpleAPI::applyDisplayGamma(TQPtrList<SingleScreenData> screenInfoAr
+ 	if (isValid() == true) {
+ 		randr_display = tqt_xdisplay();
+ 		randr_screen_info = read_screen_info(randr_display);
+-		for (int i = 0; i < screenInfoArray.count(); i++) {
++		for (int i = 0; i < screenInfoArray.count() && i < randr_screen_info->n_output; i++) {
+ 			screendata = screenInfoArray.at(i);
+ 			output_info = randr_screen_info->outputs[i]->info;
+ 			CrtcInfo *current_crtc = randr_screen_info->outputs[i]->cur_crtc;
+@@ -1157,7 +1162,7 @@ void KRandrSimpleAPI::applyDisplayDPMS(TQPtrList<SingleScreenData> screenInfoArr
+ 	if (isValid() == true) {
+ 		randr_display = tqt_xdisplay();
+ 		randr_screen_info = read_screen_info(randr_display);
+-		for (i = 0; i < screenInfoArray.count(); i++) {
++		for (i = 0; i < screenInfoArray.count() && i < randr_screen_info->n_output; i++) {
+ 			screendata = screenInfoArray.at(i);
+ 			output_info = randr_screen_info->outputs[i]->info;
+ 			CrtcInfo *current_crtc = randr_screen_info->outputs[i]->cur_crtc;
+-- 
+2.47.3
+

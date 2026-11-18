@@ -638,8 +638,9 @@ The Dell is retired and `ml350g6-01` has one output.
   `SCREEN n` to the n-th RandR output by position rather than by name,
   so a profile is only good for the machine it was saved on.
 
-The rule matcher itself was wrong, and is now fixed (finding 12). A
-rule with a false condition could be applied.
+Two defects in the code behind them are now fixed. A rule with a false
+condition could be applied (finding 12), and a profile saved with more
+outputs than the server has crashed whatever applied it (finding 13).
 
 The options recorded before the correction, kept because they are still
 the alternatives: a policy daemon in tdepowersave (the holder's earlier
@@ -834,7 +835,8 @@ another marks it connected, though nothing marks it disconnected again.
 The patched function is preloaded over the installed library, so the
 same binary is control and subject. Stock fails exactly the two cases
 above and passes the other five. Patched passes all seven, including a
-complete pair both unplugged and plugged in. The table is in the test's
+complete pair both unplugged and plugged in. An eighth case was added
+for finding 13. The table is in the test's
 README. The `r14.1.x` twin is a clean cherry-pick and has not been
 compiled.
 
@@ -861,7 +863,35 @@ They left `tdeinit-:9` sockets and eight dead launcher slave sockets in
 `/tmp/tdesocket-funk`, and `~/.DCOPserver_ml350g6-01_:9` in `$HOME`.
 None of them had a listener (`ss -xlp`), and all were removed by name on
 2026-11-18. `test/hotplug-rules` avoids this with its private `/tmp` and
-`HOME`.
+`HOME`, and `test/xds-drop` now does the same (`e1c40f9`).
+
+### 13. A display profile with more screens than outputs crashes -- FIXED
+
+Found 2026-11-18 by turning finding 12's lens on the rest of
+`libtderandr`. A profile maps its n-th `SCREEN` to the n-th RandR output
+by position. `applyDisplayConfiguration()`, `applyDisplayGamma()` and
+the DPMS loop walked the profile's screens and indexed the server's
+output array with no bound. So a profile saved with outputs the server
+no longer has read past the array. That happens with a dock's extra
+DP-MST outputs, another driver or another machine. The crash takes
+down whatever applied the profile: `tdeinit_displayconfig` at login,
+`tderandrtray` on a monitor change, or tdm's greeter. Before the
+finding 12 fix, the matcher could pick a "docked" profile after
+undocking, which is exactly the case with fewer outputs.
+
+**Fixed** on `fix/display-profile-output-bounds` (master, `5afe17a94`)
+and its `-r141x` twin, with identical hunks. Each loop stops at the
+smaller count. Exported to
+`patch/tdelibs/fix-display-profile-output-bounds{,-r141x}/`, PR 15.
+
+**Run** as a case of `test/hotplug-rules/`. Its shim is now the whole
+`libtderandr.cpp`, so it tests whichever branch the clone has out. On
+the 16-output dummy server, stock crashes with SIGSEGV on a 20-screen
+profile. gdb places it in `applyDisplayConfiguration()`, called from
+`applyHotplugRules()`. Patched applies screen 0 and exits 0. The same
+file built unpatched still crashes, and a 16-screen profile applies the
+same before and after. With both branches combined, all eight cases
+pass. The table is in the test's README.
 
 ## Open: tdelauncher lost its socket once, cause unknown
 

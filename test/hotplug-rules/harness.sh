@@ -12,7 +12,7 @@
 # and probes the live GPU. Every process dies when this script exits, and
 # the private /tmp takes the X lock and the TDE sockets with it.
 #
-# Seven fixed cases, no loops except one bounded wait.
+# Eight fixed cases; the only loops are one bounded wait and a fixed seq.
 set -u
 LABEL=${1:-stock}
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -48,6 +48,10 @@ profile() {
 CASE=0
 profile docked 800 600
 profile laptop 640 480
+# A docked profile saved with more outputs than this server's 16.
+{ cat "$C/displayconfig/docked"; for k in $(seq 2 19); do
+	printf '\n[SCREEN %d]\nScreenUniqueName=DUMMY%d\nIsPrimary=false\nIsExtended=false\n' $k $k
+done; } > "$C/displayconfig/docked-20"
 mode() { xrandr | sed -n 's/^DUMMY0 connected primary \([0-9x]*\)+.*/\1/p'; }
 named() { case $1 in 800x600) echo docked;; 640x480) echo laptop;; 1024x768) echo none;; *) echo "?$1";; esac; }
 # rules NAME EXPECTED (outputs states profile)... -- TDE names outputs
@@ -61,8 +65,11 @@ rules() {
 		i=$((i + 1)); shift 3
 	done
 	CASE=$((CASE + 1))
-	env ${SHIM:+LD_PRELOAD=$SHIM} tdeinit_displayconfig > "$R/case-$CASE.log" 2>&1
+	# --nocrashhandler: a crash would otherwise wait on TDE's crash dialog.
+	env ${SHIM:+LD_PRELOAD=$SHIM} tdeinit_displayconfig --nocrashhandler > "$R/case-$CASE.log" 2>&1
+	rc=$?
 	got=$(named "$(mode)")
+	[ $rc -ge 128 ] && got=crashed
 	printf '  %-34s applied %-7s %s\n' "$name" "$got" "$([ "$got" = "$want" ] && echo ok || echo "WRONG, want $want")"
 }
 echo "== $LABEL${SHIM:+ (preloading $SHIM)}: DUMMY1 disconnected"
@@ -71,6 +78,7 @@ rules "one rule that does not hold"  none    :0:DUMMY1 1 docked
 rules "docked {D0 C, D1 C}"          none    :0:DUMMY0,:0:DUMMY1 1,1 docked
 rules "laptop {D0 C}, docked 3 conds" laptop  :0:DUMMY0 1 laptop :0:DUMMY0,:0:DUMMY1,:0:DUMMY2 1,1,2 docked
 rules "laptop/docked pair, unplugged" laptop :0:DUMMY0,:0:DUMMY1 1,2 laptop :0:DUMMY0,:0:DUMMY1 1,1 docked
+rules "20-screen profile, 16 outputs" docked  :0:DUMMY0 1 docked-20
 xrandr --newmode 800x600t 40.00 800 840 968 1056 600 601 605 628 +hsync +vsync
 xrandr --addmode DUMMY1 800x600t
 xrandr --output DUMMY1 --mode 800x600t --right-of DUMMY0
