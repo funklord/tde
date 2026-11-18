@@ -620,9 +620,17 @@ and an undocked rule, each pointing at a saved profile.
 Two things are still unknown, because they need a two-output machine.
 The Dell is retired and `ml350g6-01` has one output.
 
-- **Does `deviceChanged()` fire on a real dock and undock?** It hangs off
-  tdehw's Monitor device events, which come from udev, not from
-  RandR.
+- **Does `deviceChanged()` fire on a real dock and undock?** By the
+  code, yes, but this has not been observed. tdehw makes each DRM
+  connector (`card0-DP-1`) a Monitor device. On the udev `change` event
+  the kernel sends for the card on hotplug, it re-reads each child
+  connector's `status` and emits `hardwareUpdated`
+  (`tdehardwaredevices.cpp`, `processHotPluggedHardware()`).
+  `tderandrtray` connects that to `deviceChanged()`. Only `Updated` is
+  connected, so a connector that is newly *added*, such as a DP-MST
+  branch, is reached through its card's change event and not its own.
+  This runs only while `tderandrtray` is running in the session.
+  Triggering a change event needs root here.
 - **Can a profile express mirror-crop?** That is both outputs at the
   origin, in different modes. The file format can: `AbsXPos=0` on both
   enabled outputs, each with its own pixel count. Whether the module's
