@@ -35,3 +35,4 @@ __pycache__/
 
 # Fetched and written by test/hotplug-rules.
 /test/hotplug-rules/out/
+/test/hotplug-rules/primary_probe

@@ -12,7 +12,7 @@
 # and probes the live GPU. Every process dies when this script exits, and
 # the private /tmp takes the X lock and the TDE sockets with it.
 #
-# Eight fixed cases; the only loops are one bounded wait and a fixed seq.
+# Ten fixed cases; the only loops are one bounded wait and two fixed ones.
 set -u
 LABEL=${1:-stock}
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -85,3 +85,12 @@ xrandr --output DUMMY1 --mode 800x600t --right-of DUMMY0
 echo "== $LABEL: DUMMY1 plugged in"
 rules "laptop/docked pair, plugged"  docked  :0:DUMMY0,:0:DUMMY1 1,2 laptop :0:DUMMY0,:0:DUMMY1 1,1 docked
 rules "docked {D0 C, D1 C}"          docked  :0:DUMMY0,:0:DUMMY1 1,1 docked
+# Which output does libtderandr call primary? primary_probe prints it for
+# each active output; xrandr says which one RandR has. The cases above
+# leave DUMMY1 switched off by the docked profile, so turn it back on.
+xrandr --output DUMMY1 --mode 800x600t --right-of DUMMY0
+for p in DUMMY0 DUMMY1; do
+	xrandr --output $p --primary
+	got=$(env ${SHIM:+LD_PRELOAD=$SHIM} "$HERE/primary_probe" 2>/dev/null | sed -n 's/^:0:\(DUMMY[0-9]*\) primary=1$/\1/p' | tr '\n' ' ')
+	printf '  %-34s reads   %-7s %s\n' "RandR primary $p" "${got% }" "$([ "${got% }" = "$p" ] && echo ok || echo "WRONG, want $p")"
+done

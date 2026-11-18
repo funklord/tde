@@ -34,6 +34,9 @@ changes, re-export it rather than editing the patches by hand.
                                                  a profile with more screens
                                                  than outputs no longer
                                                  crashes (run on master)
+    tdelibs/fix-randr-primary-output{,-r141x}/   the primary output is the
+                                                 one RandR names (run on
+                                                 master)
 
     libr/fix-keep-relro-and-symbols{,-r141x}/    RELRO and .symtab survive a
                                                  libr rewrite (built, tested)

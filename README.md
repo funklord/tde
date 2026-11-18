@@ -50,8 +50,9 @@ in one person's packages.
   while; folders opened from GTK programs that went to Cervisia instead
   of the file manager; SFTP copies dated 1970; display hotplug rules
   that switched to a "docked" arrangement after the dock was unplugged,
-  and saved display profiles that crashed the display setup when a
-  dock's outputs were gone; and `tdelfeditor` stripping `GNU_RELRO`
+  saved display profiles that crashed the display setup when a dock's
+  outputs were gone, and two monitors with the wrong one shown as
+  primary; and `tdelfeditor` stripping `GNU_RELRO`
   from every binary it edits, fixed in libr.
 - **Drops from archives and remote sources.** Konqueror accepts X
   Direct Save, so a file dragged out of an archive manager or a remote

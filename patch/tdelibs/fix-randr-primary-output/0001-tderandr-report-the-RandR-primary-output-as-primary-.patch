@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Wed, 18 Nov 2026 21:07:07 +0100
+Subject: [PATCH] tderandr: report the RandR primary output as primary, not the
+ others
+
+readCurrentDisplayConfiguration() marked the output that RandR reports
+as primary as not primary, and every other active output as primary;
+the comparison has been inverted since it was written in 2011. With
+one output the fallback below marks that output primary anyway, which
+hides it. With two, the Displays module ticks "primary" on the wrong
+monitor and keeps the wrong one from being dragged, and saving that
+arrangement records the wrong output as primary, which applying it
+then makes the real one.
+
+Set is_primary only on the output RandR names. With no primary set
+at all, no output is marked, and the existing fallback and
+ensureMonitorDataConsistency() pick one as before. Profiles saved
+before this change keep whatever primary they recorded.
+
+Measured on an Xorg dummy-driver server with DUMMY0 and DUMMY1 active:
+with RandR's primary on DUMMY0, readCurrentDisplayConfiguration()
+called DUMMY1 primary, and with it on DUMMY1, DUMMY0; with this change
+it names the same output as xrandr in both cases, and a lone output is
+still primary.
+---
+ tderandr/libtderandr.cpp | 7 +------
+ 1 file changed, 1 insertion(+), 6 deletions(-)
+
+diff --git a/tderandr/libtderandr.cpp b/tderandr/libtderandr.cpp
+index 94828e434..7a58e5099 100644
+--- a/tderandr/libtderandr.cpp
++++ b/tderandr/libtderandr.cpp
+@@ -1343,12 +1343,7 @@ TQPtrList<SingleScreenData> KRandrSimpleAPI::readCurrentDisplayConfiguration() {
+ 
+ 				// Determine if this display is primary and/or extended
+ 				RROutput primaryoutput = XRRGetOutputPrimary(tqt_xdisplay(), DefaultRootWindow(tqt_xdisplay()));
+-				if (primaryoutput == randr_screen_info->outputs[i]->id) {
+-					screendata->is_primary = false;
+-				}
+-				else {
+-					screendata->is_primary = true;
+-				}
++				screendata->is_primary = (primaryoutput == randr_screen_info->outputs[i]->id);
+ 				screendata->is_extended = screen_active;
+ 				if (!screendata->is_extended) {
+ 					screendata->is_primary = false;
+-- 
+2.47.3
+

@@ -39,12 +39,18 @@ $(OUT)/shim.so: $(OUT)/lowlevel_randr.o $(GEN)/tdemacros.h $(OUT)/root/usr/inclu
 		    $(OUT)/lowlevel_randr.o $(INCS) -DTQT_THREAD_SUPPORT -DWITH_XRANDR \
 		    /opt/trinity/lib/libtderandr.so.0 -lXrandr -lX11
 
-test: driver $(OUT)/shim.so
+primary_probe: primary_probe.cpp $(GEN)/tdemacros.h $(OUT)/root/usr/include/tqt3/tqstring.h
+		$(CXX) -Os -o $@ $< $(INCS) -I$(TDELIBS) -DTQT_THREAD_SUPPORT \
+		    /opt/trinity/lib/libtderandr.so.0 /opt/trinity/lib/libtdecore.so.14 \
+		    $(firstword $(wildcard /usr/lib/*/libtqt-mt.so.3))
+
+test: driver $(OUT)/shim.so primary_probe
 		@echo "TDELIBS $(TDELIBS): $$(git -C $(TDELIBS) rev-parse --abbrev-ref HEAD)"
 		timeout 120 ./harness.sh stock
 		SHIM=$(CURDIR)/$(OUT)/shim.so timeout 120 ./harness.sh patched
 
 clean:
+		rm -f primary_probe
 		rm -rf $(OUT)
 
 FORCE:

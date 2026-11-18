@@ -29,7 +29,7 @@ TDE's crash dialog.
 
 Columns are the shim built from `fix/hotplug-rule-all-conditions`
 (matcher), `fix/display-profile-output-bounds` (bounds), and a worktree
-with both.
+with both. The primary branch leaves these rows as stock.
 
     case                                 want    stock    matcher  bounds   both
     one rule that holds                  docked  docked   docked   docked   docked
@@ -41,7 +41,16 @@ with both.
     laptop/docked pair, plugged          docked  docked   docked   docked   docked
     docked {D0 C, D1 C}, plugged         docked  docked   docked   docked   docked
 
+Which output libtderandr calls primary (`primary_probe`, both outputs
+active), stock against `fix/randr-primary-output` and against all three
+fixes together:
+
+    RandR primary    stock    primary  all three
+    DUMMY0           DUMMY1   DUMMY0   DUMMY0
+    DUMMY1           DUMMY0   DUMMY1   DUMMY1
+
 The same unpatched file built as a shim also crashes on the
 20-screen profile, so the shim reproduces stock rather than masking it.
-The patches are `patch/tdelibs/fix-hotplug-rule-all-conditions` and
-`patch/tdelibs/fix-display-profile-output-bounds`.
+The patches are `patch/tdelibs/fix-hotplug-rule-all-conditions`,
+`patch/tdelibs/fix-display-profile-output-bounds` and
+`patch/tdelibs/fix-randr-primary-output`.

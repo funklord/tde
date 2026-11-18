@@ -6,7 +6,7 @@ Ready to paste into `mirror.git.trinitydesktop.org`. One per branch pair.
 TDE carries the DCO and that line is a statement about provenance that only
 its author can make. PRs 1 to 7 carry it since the re-export of
 2026-09-26. **PRs 8, 9 and 10, written 2026-11-12, PR 13, written
-2026-11-13, and PRs 14 and 15, written 2026-11-18, do not**, and need it added:
+2026-11-13, and PRs 14 to 16, written 2026-11-18, do not**, and need it added:
 
     git commit --amend -s          # on each branch, master and r14.1.x
 
@@ -739,3 +739,36 @@ dummy-driver server with 16 outputs, with the patched file preloaded:
 The same file built unpatched still crashes, so the preload reproduces
 stock. With PR 14 applied as well, all eight cases of the test pass.
 Not tested: the `r14.1.x` build, which carries identical hunks.
+
+---
+
+## PR 16 -- tdelibs: `fix/randr-primary-output`
+
+**Title:** `tderandr: report the RandR primary output as primary, not the others`
+
+`readCurrentDisplayConfiguration()` set `is_primary` to false on the
+output that `XRRGetOutputPrimary()` names, and to true on every other
+active output. With a single output, the fallback after
+`Q_ASSERT(primary_set)` marks that output primary anyway, which hides
+the inversion. With two outputs, the Displays module ticks "primary" on
+the wrong monitor. Saving that arrangement then records the wrong
+output, and applying the profile makes it the real primary.
+
+The fix sets `is_primary` only on the output RandR names. When no
+primary is set at all, the existing fallback and
+`ensureMonitorDataConsistency()` choose one as before. No header
+changes. It is independent of PRs 14 and 15.
+
+### Testing
+
+A small program printed what `readCurrentDisplayConfiguration()`
+reports, on an Xorg dummy-driver server with two outputs active. The
+patched file was preloaded over the installed library:
+
+    RandR primary    stock     patched
+    DUMMY0           DUMMY1    DUMMY0
+    DUMMY1           DUMMY0    DUMMY1
+
+A lone output is reported as primary before and after. Not tested: the
+Displays module itself, and the `r14.1.x` build, which carries
+identical hunks.

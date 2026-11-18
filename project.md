@@ -638,9 +638,11 @@ The Dell is retired and `ml350g6-01` has one output.
   `SCREEN n` to the n-th RandR output by position rather than by name,
   so a profile is only good for the machine it was saved on.
 
-Two defects in the code behind them are now fixed. A rule with a false
-condition could be applied (finding 12), and a profile saved with more
-outputs than the server has crashed whatever applied it (finding 13).
+Three defects in the code behind them are now fixed. A rule with a
+false condition could be applied (finding 12). A profile saved with
+more outputs than the server has crashed whatever applied it
+(finding 13). And with two outputs, the library called the wrong one
+primary (finding 14).
 
 The options recorded before the correction, kept because they are still
 the alternatives: a policy daemon in tdepowersave (the holder's earlier
@@ -892,6 +894,37 @@ profile. gdb places it in `applyDisplayConfiguration()`, called from
 file built unpatched still crashes, and a 16-screen profile applies the
 same before and after. With both branches combined, all eight cases
 pass. The table is in the test's README.
+
+### 14. libtderandr calls the wrong output primary -- FIXED
+
+Found 2026-11-18, reading why every run printed
+`ASSERT: "primary_set"`. `readCurrentDisplayConfiguration()` compared
+each output with `XRRGetOutputPrimary()` and set `is_primary` to
+**false** on a match and true otherwise. The comparison has been
+inverted since 2011 (`7d5dd09ee2`). With one output, the fallback after
+the assertion marks that output primary anyway, so a single-monitor
+system never shows it.
+
+With two outputs:
+
+- the Displays module ticks "primary" on the wrong monitor, and pins
+  the wrong one against dragging;
+- saving that arrangement records the wrong output as primary, and
+  applying the profile then makes it the real primary.
+
+Nothing downstream compensates. `displayconfig.cpp` uses `is_primary`
+as given.
+
+**Fixed** on `fix/randr-primary-output` (master, `8fd2629ef`) and its
+`-r141x` twin, with identical hunks. Exported to
+`patch/tdelibs/fix-randr-primary-output{,-r141x}/`, PR 16. Profiles
+saved before the fix keep the primary they recorded.
+
+**Run** with `test/hotplug-rules/primary_probe`, a small program that
+prints what the library reports, on the dummy server with two outputs
+active. Stock names the other output whichever one RandR has as
+primary. Patched names the same one as `xrandr`. All three tdelibs
+fixes together pass all ten cases of the test.
 
 ## Open: tdelauncher lost its socket once, cause unknown
 
