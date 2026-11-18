@@ -849,8 +849,11 @@ same binary is control and subject. Stock fails exactly the two cases
 above and passes the other five. Patched passes all seven, including a
 complete pair both unplugged and plugged in. An eighth case was added
 for finding 13. The table is in the test's
-README. The `r14.1.x` twin is a clean cherry-pick and has not been
-compiled.
+README. The `r14.1.x` twin is a clean cherry-pick. On 2026-11-18 it
+was syntax-compiled against 14.1.7's `tdelibs14-trinity-dev`,
+`libtqtinterface-dev` and TQt headers, with no errors. An error planted
+in the changed function was reported, so the compile reached it. It has
+not been run. The same holds for the twins of findings 13 and 14.
 
 TDE names outputs `:0:<name>` whatever the display (a FIXME in
 `readCurrentDisplayConfiguration()`). A rule naming `DUMMY0` bare

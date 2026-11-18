@@ -703,8 +703,10 @@ state. The patched function was preloaded over the installed
     laptop/docked pair, plugged           docked   docked
     docked {D0 C, D1 C}, plugged          docked   docked
 
-Not tested: a real hotplug, which the dummy driver cannot unplug, and
-the `r14.1.x` build, which carries the same change.
+Not tested: a real hotplug, which the dummy driver cannot unplug. The
+`r14.1.x` twin carries the same change. It was syntax-compiled against
+TDE 14.1.7's headers, with a planted error caught, but it has not been
+run.
 
 ---
 
@@ -738,7 +740,9 @@ dummy-driver server with 16 outputs, with the patched file preloaded:
 
 The same file built unpatched still crashes, so the preload reproduces
 stock. With PR 14 applied as well, all eight cases of the test pass.
-Not tested: the `r14.1.x` build, which carries identical hunks.
+The `r14.1.x` twin carries identical hunks. It was syntax-compiled
+against TDE 14.1.7's headers, with a planted error caught, but it has
+not been run.
 
 ---
 
@@ -769,6 +773,9 @@ patched file was preloaded over the installed library:
     DUMMY0           DUMMY1    DUMMY0
     DUMMY1           DUMMY0    DUMMY1
 
-A lone output is reported as primary before and after. Not tested: the
-Displays module itself, and the `r14.1.x` build, which carries
-identical hunks.
+A lone output is reported as primary before and after. The Displays
+module showed the inversion itself: with RandR's primary on DUMMY0, it
+left "Use this device as the primary monitor" unticked for DUMMY0. The
+`r14.1.x` twin carries identical hunks. It was syntax-compiled against
+TDE 14.1.7's headers, with a planted error caught, but it has not been
+run.
