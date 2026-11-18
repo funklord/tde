@@ -651,7 +651,14 @@ The Dell is retired and `ml350g6-01` has one output.
   and the module has no mirror or clone mode at all. Its two "Mirror
   screen" boxes are reflections. So TDE applied a mirror it could not
   offer. **That gap is closed** by `feat/displayconfig-mirror`; see
-  *The Displays module can mirror* below. Profiles also map
+  *The Displays module can mirror* below. The rules themselves can be
+  entered in the module. Its Hotplug Rules grid gives each output a
+  three-state box: ticked is connected, cleared is disconnected, and
+  the partial state is any (`createHotplugRulesGrid()`). So the whole
+  policy can now be set without editing a file. That is: a mirror-crop
+  profile, a laptop profile, a rule {external ticked} for one and a rule
+  {external cleared} for the other. This is read from the code, not
+  driven. Profiles also map
   `SCREEN n` to the n-th RandR output by position rather than by name,
   so a profile is only good for the machine it was saved on.
 
