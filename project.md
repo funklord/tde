@@ -642,9 +642,9 @@ The Dell is retired and `ml350g6-01` has one output.
   `applyMonitorLayoutRules()` in `displayconfig.cpp` makes every
   arrangement obey "do NOT overlap" and "touch on at least one side",
   and the module has no mirror or clone mode at all. Its two "Mirror
-  screen" boxes are reflections. So TDE applies a mirror it cannot
-  offer: today the policy is reachable only by writing the profile
-  file by hand. Profiles also map
+  screen" boxes are reflections. So TDE applied a mirror it could not
+  offer. **That gap is closed** by `feat/displayconfig-mirror`; see
+  *The Displays module can mirror* below. Profiles also map
   `SCREEN n` to the n-th RandR output by position rather than by name,
   so a profile is only good for the machine it was saved on.
 
@@ -2303,6 +2303,50 @@ directory, because the locker was killed rather than unlocked. They are
 named for display 9, so they cannot collide with `:0`'s, and they were
 removed by name afterwards. The resize bound was compiled but not
 exercised.
+
+## The Displays module can mirror -- IMPLEMENTED, run on master
+
+Finding 8's policy, mirror-crop, applies correctly from a profile, but
+the Displays module could not make one. Its layout rules forbid overlap,
+and it has no clone mode. That also means pressing Apply on an
+arrangement mirrored outside TDE pulled it apart. TDE could not mirror a
+projector either, which is a gap well beyond the holder's laptop.
+
+**Written 2026-11-18** on `feat/displayconfig-mirror` (master,
+`5dfeaf02a`), backported as `-r141x` with identical hunks, and exported
+to `patch/tdebase/feat-displayconfig-mirror{,-r141x}/`, PR 17.
+
+**The design, and why.** A new box, "Mirror the primary monitor onto
+this monitor", sits under the primary and extend boxes. A mirror is
+defined as a non-primary, active monitor at the primary's position:
+
+- the profile format gains no field, so profiles stay readable by stock
+  TDE, which applies them correctly;
+- an arrangement mirrored outside TDE is recognised and shown ticked;
+- each monitor keeps its own resolution, so a smaller one shows the
+  primary's top left. That is the holder's mirror-crop exactly, and it
+  is what `xrandr` does with two outputs at one position.
+
+The layout rules and dragging skip a mirror. Unticking puts the monitor
+to the right of the primary. Rejected: a separate stored "mirror" flag,
+which would need a format change and leave stock TDE misreading the
+profile. Also rejected: scaling to a common resolution, which the
+holder ruled out on 2026-10-02.
+
+**Run** with `test/hotplug-rules` (`make mirror-ui`). The module was
+built from the branch by `build-kcm.sh` against the installed TDE, with
+the DCOP skeleton written by hand because `dcopidl` is not installed.
+It was driven by `xdotool` under `tdecmshell` on the dummy server, with
+the confirmation accepted and the result read after its revert timer.
+Ticking the box mirrors. An existing mirror shows ticked and survives
+Apply, where the stock module moved the primary to `+0+592`.
+Unticking restores side by side. The table is in the test's README.
+The stock module also showed finding 14 in the real UI: it left
+"primary" unticked on the output RandR names primary.
+
+The `r14.1.x` twin was syntax-compiled against 14.1.7's headers,
+using the 14.2 `tquic`'s header for the `.ui`. It had no errors, and a
+planted error in the new slot was reported. It has not been run.
 
 ## Konqueror accepting XDS drops -- IMPLEMENTED, run on master
 

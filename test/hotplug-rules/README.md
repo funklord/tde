@@ -54,3 +54,25 @@ The same unpatched file built as a shim also crashes on the
 The patches are `patch/tdelibs/fix-hotplug-rule-all-conditions`,
 `patch/tdelibs/fix-display-profile-output-bounds` and
 `patch/tdelibs/fix-randr-primary-output`.
+
+## The Displays module's mirror option (`make mirror-ui`)
+
+`build-kcm.sh` builds `kcm_displayconfig` from the tdebase clone into
+`out/stage`, and `mirror-ui.sh` drives it under `tdecmshell` on the same
+private server. It enables display control, picks monitor 2, optionally
+clicks the mirror box, applies, accepts, and reads `xrandr` after the
+15-second revert timer. There is no window manager, so the clicks are at
+measured positions, and the screenshots in `out/ui/` show what was
+clicked. The shim is preloaded, so TDELIBS should carry the
+primary-output fix.
+
+Result, 2026-11-18, module from `feat/displayconfig-mirror`, primary
+DUMMY0 1024x768:
+
+    case                                   module   screen     DUMMY0      DUMMY1
+    already mirrored, Apply unchanged      stock    1024x1360  +0+592      +0+0
+    side by side, tick the box             patched  1024x768   +0+0        +0+0
+    already mirrored, Apply unchanged      patched  1024x768   +0+0        +0+0
+    already mirrored, untick the box       patched  1824x768   +0+0        +1024+0
+
+The patch is `patch/tdebase/feat-displayconfig-mirror`.

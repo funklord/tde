@@ -54,6 +54,12 @@ in one person's packages.
   outputs were gone, and two monitors with the wrong one shown as
   primary; and `tdelfeditor` stripping `GNU_RELRO`
   from every binary it edits, fixed in libr.
+- **Mirrored monitors.** The Displays module can show the primary
+  monitor's image on another monitor, for a projector or a docked
+  laptop's own panel. Each monitor keeps its own resolution, so a
+  smaller panel shows the top left of a larger external one. Stock TDE
+  can only extend the desktop, and its Apply pulls apart a mirror set
+  up any other way.
 - **Drops from archives and remote sources.** Konqueror accepts X
   Direct Save, so a file dragged out of an archive manager or a remote
   browser is saved where it is dropped, as it already is in Dolphin,

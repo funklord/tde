@@ -23,6 +23,9 @@ changes, re-export it rather than editing the patches by hand.
                                                  (run on master: project.md)
     tdebase/feat-konqueror-xds{,-r141x}/         Konqueror accepts X Direct
                                                  Save drops (run on master)
+    tdebase/feat-displayconfig-mirror{,-r141x}/  the Displays module can
+                                                 mirror the primary monitor
+                                                 (run on master)
 
     tdelibs/fix-formfactor-dmi-chassis{,-r141x}/ form factor from the SMBIOS
                                                  chassis type (run on master)

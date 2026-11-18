@@ -6,7 +6,7 @@ Ready to paste into `mirror.git.trinitydesktop.org`. One per branch pair.
 TDE carries the DCO and that line is a statement about provenance that only
 its author can make. PRs 1 to 7 carry it since the re-export of
 2026-09-26. **PRs 8, 9 and 10, written 2026-11-12, PR 13, written
-2026-11-13, and PRs 14 to 16, written 2026-11-18, do not**, and need it added:
+2026-11-13, and PRs 14 to 17, written 2026-11-18, do not**, and need it added:
 
     git commit --amend -s          # on each branch, master and r14.1.x
 
@@ -779,3 +779,47 @@ left "Use this device as the primary monitor" unticked for DUMMY0. The
 `r14.1.x` twin carries identical hunks. It was syntax-compiled against
 TDE 14.1.7's headers, with a planted error caught, but it has not been
 run.
+
+---
+
+## PR 17 -- tdebase: `feat/displayconfig-mirror`
+
+**Title:** `displayconfig: offer to mirror the primary monitor on another monitor`
+
+The Displays module cannot mirror. Its layout rules keep any monitor
+from overlapping another, so a projector, or a docked laptop's own
+panel, can only extend the desktop. Pressing Apply on an arrangement
+that was mirrored outside TDE also pulls it apart. libtderandr applies
+overlapping outputs correctly. Only the module stands in the way.
+
+This adds "Mirror the primary monitor onto this monitor" under the
+existing primary and extend options. A mirror is a non-primary monitor
+that is active and placed at the primary monitor's position, so profiles
+need no new field:
+
+- ticking the box moves the monitor there;
+- unticking it places the monitor to the right of the primary;
+- an arrangement that is already mirrored is shown with the box ticked.
+
+The layout rules and dragging leave a mirror alone. Each monitor keeps
+its own resolution, so a smaller one shows the top left of the
+primary's image, as `xrandr` does with two outputs at one position.
+
+### Testing
+
+The module was built from this branch and run under `tdecmshell` on an
+Xorg dummy-driver server. The primary was 1024x768 and the second
+monitor 800x600 beside it. The confirmation was accepted, and the result
+was read after its 15-second revert timer:
+
+    case                               module    result
+    already mirrored, Apply unchanged  stock     primary moved to +0+592,
+                                                 screen 1024x1360
+    side by side, tick the box         patched   both at +0+0, screen 1024x768
+    already mirrored, Apply unchanged  patched   box shown ticked, both stay
+                                                 at +0+0
+    already mirrored, untick the box   patched   second monitor at +1024+0
+
+Not tested: real monitors, and the `r14.1.x` build. That twin carries
+identical hunks and was syntax-compiled against TDE 14.1.7's headers,
+but it has not been run.

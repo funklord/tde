@@ -1,0 +1,233 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nabeel Sowan <nabeel@vibes.se>
+Date: Wed, 18 Nov 2026 21:25:28 +0100
+Subject: [PATCH] displayconfig: offer to mirror the primary monitor on another
+ monitor
+
+The Displays module could not mirror at all. Its layout rules keep every
+monitor from overlapping another, so a projector or a docked laptop's
+panel could only extend the desktop, and pressing Apply on an
+arrangement mirrored outside TDE pulled it apart. libtderandr applies
+overlapping outputs correctly; only the module stood in the way.
+
+Add "Mirror the primary monitor onto this monitor" under the existing
+primary and extend options. A mirror is a non-primary monitor that is
+active and placed at the primary monitor's position, so no new profile
+field is needed: ticking the box moves the monitor there, unticking it
+puts it to the right of the primary, and an arrangement that is already
+mirrored is shown with the box ticked. The layout rules and dragging
+leave a mirror alone. Each monitor keeps its own resolution, so a
+smaller one shows the top left of the primary's image, the way xrandr
+places two outputs at one position.
+
+Tested on an Xorg dummy-driver server, primary 1024x768, second monitor
+800x600 beside it, with the dialog accepted and checked after its
+revert timeout:
+
+- ticking the box gives a 1024x768 screen with both monitors at +0+0;
+- with both already at +0+0, the box shows ticked and Apply keeps them
+  there, where the unchanged module re-laid them to a 1024x1360 screen;
+- unticking returns the second monitor to +1024+0.
+---
+ kcontrol/displayconfig/displayconfig.cpp    | 76 ++++++++++++++++++++-
+ kcontrol/displayconfig/displayconfig.h      |  2 +
+ kcontrol/displayconfig/displayconfigbase.ui | 14 +++-
+ 3 files changed, 86 insertions(+), 6 deletions(-)
+
+diff --git a/kcontrol/displayconfig/displayconfig.cpp b/kcontrol/displayconfig/displayconfig.cpp
+index a5c3205b3..f7d1bfb09 100644
+--- a/kcontrol/displayconfig/displayconfig.cpp
++++ b/kcontrol/displayconfig/displayconfig.cpp
+@@ -482,14 +482,19 @@ void KDisplayConfig::updateDraggableMonitorInformationInternal (int monitor_id,
+ 					primary_monitor = monitor;
+ 				}
+ 				else {
+-					monitor->is_primary = false;
++					// A mirror stays on the primary monitor, so it is not dragged either
++					monitor->is_primary = isMirrorOfPrimary(monitor->screen_id);
+ 				}
+ 			}
+ 		}
+ 	}
+ 
+ 	if (primary_monitor) {
+-		if (moved_monitor != primary_monitor) {
++		if (isMirrorOfPrimary(monitor_id)) {
++			// Overlapping the primary monitor is the point of a mirror, so
++			// the layout rules, which forbid overlap, do not apply to it
++		}
++		else if (moved_monitor != primary_monitor) {
+ 			// Run layout rules
+ 			applyMonitorLayoutRules(moved_monitor);
+ 
+@@ -648,7 +653,8 @@ void KDisplayConfig::moveMonitor(DraggableMonitor* monitor, int realx, int realy
+ 					primary_monitor = monitor;
+ 				}
+ 				else {
+-					monitor->is_primary = false;
++					// A mirror stays on the primary monitor, so it is not dragged either
++					monitor->is_primary = isMirrorOfPrimary(monitor->screen_id);
+ 				}
+ 			}
+ 		}
+@@ -833,6 +839,8 @@ KDisplayConfig::KDisplayConfig(TQWidget *parent, const char *name, const TQStrin
+ 	connect(base->isPrimaryMonitorCB, TQ_SIGNAL(clicked()), TQ_SLOT(ensurePrimaryMonitorIsAvailable()));
+ 	connect(base->isExtendedMonitorCB, TQ_SIGNAL(clicked()), TQ_SLOT(changed()));
+ 	connect(base->isExtendedMonitorCB, TQ_SIGNAL(clicked()), TQ_SLOT(updateExtendedMonitorInformation()));
++	connect(base->isMirrorMonitorCB, TQ_SIGNAL(clicked()), TQ_SLOT(changed()));
++	connect(base->isMirrorMonitorCB, TQ_SIGNAL(clicked()), TQ_SLOT(updateMirrorMonitorInformation()));
+ 
+ 	connect(base->systemEnableSupport, TQ_SIGNAL(toggled(bool)), base->monitorDisplaySelectDD, TQ_SLOT(setEnabled(bool)));
+ 
+@@ -882,6 +890,59 @@ void KDisplayConfig::updateExtendedMonitorInformation () {
+ 	refreshDisplayedInformation();
+ }
+ 
++// A monitor mirrors the primary one when it is active and placed at the
++// primary monitor's position. Nothing else marks a mirror, so a profile
++// needs no new field, and an arrangement mirrored outside TDE is shown as
++// a mirror rather than pulled apart by the layout rules.
++bool KDisplayConfig::isMirrorOfPrimary (int screen_id) {
++	int i;
++	SingleScreenData *screendata = m_screenInfoArray[activeProfileName].at(screen_id);
++	SingleScreenData *primarydata = NULL;
++
++	for (i=0;i<numberOfScreens;i++) {
++		if (m_screenInfoArray[activeProfileName].at(i)->is_primary) {
++			primarydata = m_screenInfoArray[activeProfileName].at(i);
++		}
++	}
++	if (!screendata || !primarydata || (screendata == primarydata) || !screendata->is_extended) {
++		return false;
++	}
++	return ((screendata->absolute_x_position == primarydata->absolute_x_position)
++		&& (screendata->absolute_y_position == primarydata->absolute_y_position));
++}
++
++void KDisplayConfig::updateMirrorMonitorInformation () {
++	int i;
++	SingleScreenData *screendata;
++	SingleScreenData *primarydata = NULL;
++
++	screendata = m_screenInfoArray[activeProfileName].at(base->monitorDisplaySelectDD->currentItem());
++	for (i=0;i<numberOfScreens;i++) {
++		if (m_screenInfoArray[activeProfileName].at(i)->is_primary) {
++			primarydata = m_screenInfoArray[activeProfileName].at(i);
++		}
++	}
++	if (!screendata || !primarydata || (screendata == primarydata)) {
++		return;
++	}
++
++	if (base->isMirrorMonitorCB->isChecked()) {
++		// Show the top left of the primary monitor's image: at the same
++		// position, each monitor keeps its own resolution
++		screendata->absolute_x_position = primarydata->absolute_x_position;
++		screendata->absolute_y_position = primarydata->absolute_y_position;
++	}
++	else {
++		// Place it to the right of the primary monitor, where the layout
++		// rules then keep it
++		bool isvisiblyrotated = (primarydata->current_rotation_index == ROTATION_90_DEGREES_INDEX) || (primarydata->current_rotation_index == ROTATION_270_DEGREES_INDEX);
++		screendata->absolute_x_position = primarydata->absolute_x_position + (isvisiblyrotated ? primarydata->current_y_pixel_count : primarydata->current_x_pixel_count);
++		screendata->absolute_y_position = primarydata->absolute_y_position;
++	}
++
++	refreshDisplayedInformation();
++}
++
+ void KDisplayConfig::rescanHardware (void) {
+ 	m_randrsimple->destroyScreenInformationObject(m_screenInfoArray[activeProfileName]);
+ 	m_hardwareScreenInfoArray = m_randrsimple->readCurrentDisplayConfiguration();
+@@ -1186,6 +1247,7 @@ void KDisplayConfig::updateDisplayedInformation () {
+ 		base->orientationVFlip->setEnabled(false);
+ 		base->isPrimaryMonitorCB->setEnabled(false);
+ 		base->isExtendedMonitorCB->setEnabled(false);
++		base->isMirrorMonitorCB->setEnabled(false);
+ 		return;
+ 	}
+ 
+@@ -1263,6 +1325,13 @@ void KDisplayConfig::updateDisplayedInformation () {
+ 	base->isPrimaryMonitorCB->blockSignals(false);
+ 	base->isExtendedMonitorCB->blockSignals(false);
+ 
++	// Only a monitor that shows part of the desktop, and is not the
++	// primary one, can mirror the primary
++	base->isMirrorMonitorCB->blockSignals(true);
++	base->isMirrorMonitorCB->setEnabled(!screendata->generic_screen_detected && !screendata->is_primary && screendata->is_extended);
++	base->isMirrorMonitorCB->setChecked(isMirrorOfPrimary(base->monitorDisplaySelectDD->currentItem()));
++	base->isMirrorMonitorCB->blockSignals(false);
++
+ 	if (!screendata->screen_connected) {
+ 		base->resolutionSlider->setEnabled(false);
+ 		base->refreshRateDD->setEnabled(false);
+@@ -1271,6 +1340,7 @@ void KDisplayConfig::updateDisplayedInformation () {
+ 		base->orientationVFlip->setEnabled(false);
+ 		base->isPrimaryMonitorCB->setEnabled(false);
+ 		base->isExtendedMonitorCB->setEnabled(false);
++		base->isMirrorMonitorCB->setEnabled(false);
+ 	}
+ }
+ 
+diff --git a/kcontrol/displayconfig/displayconfig.h b/kcontrol/displayconfig/displayconfig.h
+index 259c31391..a30b86200 100644
+--- a/kcontrol/displayconfig/displayconfig.h
++++ b/kcontrol/displayconfig/displayconfig.h
+@@ -98,6 +98,7 @@ private:
+ 	bool applyMonitorLayoutRules(void);
+ 	bool applyMonitorLayoutRules(DraggableMonitor* primary_monitor);
+ 	void updateDraggableMonitorInformationInternal (int, bool);
++	bool isMirrorOfPrimary (int screen_id);
+ 	TQTimer* m_gammaApplyTimer;
+ 	void gammaSetAverageAllSlider();
+ 	void setGammaLabels();
+@@ -129,6 +130,7 @@ private slots:
+ 	void ensureMonitorDataConsistency (void);
+ 	void updateDraggableMonitorInformation (int);
+ 	void updateExtendedMonitorInformation (void);
++	void updateMirrorMonitorInformation (void);
+ 	void processLockoutControls (void);
+ 	void rotationInfoChanged (void);
+ 	void refreshInfoChanged (void);
+diff --git a/kcontrol/displayconfig/displayconfigbase.ui b/kcontrol/displayconfig/displayconfigbase.ui
+index 0595d65aa..12beed98f 100644
+--- a/kcontrol/displayconfig/displayconfigbase.ui
++++ b/kcontrol/displayconfig/displayconfigbase.ui
+@@ -402,7 +402,15 @@
+ 						    <string>&amp;Extend my Trinity desktop onto this monitor.</string>
+ 					    </property>
+ 				    </widget>
+-				    <widget class="KPushButton" row="8" column="0" colspan="1">
++				    <widget class="TQCheckBox" row="8" column="0" colspan="4">
++					    <property name="name">
++						    <cstring>isMirrorMonitorCB</cstring>
++					    </property>
++					    <property name="text">
++						    <string>Mirror the primar&amp;y monitor onto this monitor.</string>
++					    </property>
++				    </widget>
++				    <widget class="KPushButton" row="9" column="0" colspan="1">
+ 					<property name="name">
+ 						<cstring>rescanHardware</cstring>
+ 					</property>
+@@ -410,7 +418,7 @@
+ 						<string>&amp;Rescan Displays</string>
+ 					</property>
+ 				    </widget>
+-				    <widget class="KPushButton" row="8" column="1" colspan="1">
++				    <widget class="KPushButton" row="9" column="1" colspan="1">
+ 					<property name="name">
+ 						<cstring>loadExistingProfile</cstring>
+ 					</property>
+@@ -418,7 +426,7 @@
+ 						<string>Load &amp;Existing Profile</string>
+ 					</property>
+ 				    </widget>
+-				    <widget class="TQLayoutWidget" row="8" column="3" colspan="1">
++				    <widget class="TQLayoutWidget" row="9" column="3" colspan="1">
+ 					    <property name="name">
+ 						    <cstring>layout7</cstring>
+ 					    </property>
+-- 
+2.47.3
+
