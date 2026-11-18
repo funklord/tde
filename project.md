@@ -638,8 +638,13 @@ The Dell is retired and `ml350g6-01` has one output.
   applied through a hotplug rule by the installed
   `tdeinit_displayconfig`. It left a 1024x768 framebuffer with both
   outputs at `+0+0`, the smaller showing the top-left crop. That is the
-  holder's policy exactly. Whether the module's drag-to-arrange UI can
-  save it is unchecked. A hand-written file works regardless. Profiles also map
+  holder's policy exactly. **The module's UI cannot save it.**
+  `applyMonitorLayoutRules()` in `displayconfig.cpp` makes every
+  arrangement obey "do NOT overlap" and "touch on at least one side",
+  and the module has no mirror or clone mode at all. Its two "Mirror
+  screen" boxes are reflections. So TDE applies a mirror it cannot
+  offer: today the policy is reachable only by writing the profile
+  file by hand. Profiles also map
   `SCREEN n` to the n-th RandR output by position rather than by name,
   so a profile is only good for the machine it was saved on.
 
