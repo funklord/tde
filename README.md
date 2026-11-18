@@ -32,8 +32,8 @@ in one person's packages.
   whether it carries out the lid action, are now separate settings.
 - **The internal panel switches off on lid close**, and its arrangement is
   restored when the lid opens. Switching the display off is a setting
-  of its own, separate from locking and from suspending. Stock TDE
-  does not handle RandR at all.
+  of its own, separate from locking and from suspending. Stock
+  tdepowersave does not look at RandR at all.
 - **Screen locking works under logind.** tdm now sets the session class
   to `user` when it opens the session, so logind reports `CanLock=yes`.
   The lock screen's control FIFOs, which could not be created in the

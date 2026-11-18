@@ -425,7 +425,14 @@ A `block` inhibitor, so logind's default `HandleLidSwitchDocked=ignore`
 never applies -- and tdepowersave has no concept of "docked". Closing the
 lid with an external display attached runs the full lid-close action.
 
-### 5. tdepowersave has no RandR awareness at all
+### 5. tdepowersave has no RandR awareness at all -- addressed by the lid series
+
+True of stock tdepowersave. The lid series gives it what the lid needs:
+whether an external display is connected (finding 4) and which output is
+the internal panel (*Switching off the internal panel*). Display policy
+across monitor changes belongs to TDE's display profiles (finding 8),
+not to tdepowersave.
+
 
 `grep -rn -i 'randr\|XRR\|RRScreenChange' src/` returns nothing. A display
 hotplug reaches it only as TDE hardware-device events; on a `Backlight`
