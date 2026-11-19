@@ -7,6 +7,34 @@ locking it drives.
 The product of this project is **patches to upstream TDE**, plus this file.
 It builds nothing of its own.
 
+## Where this stands (2026-11-19)
+
+All work is committed and pushed. The patches are in `patch/`, and the
+PR text is in `pr-descriptions.md` (PRs 1 to 17). None is submitted
+upstream. None is installed on `ml350g6-01`, which runs stock TDE 14.2
+preview.
+
+The latest work is on display configuration. Findings 12 to 14 and the
+Displays module's mirror option are under *Confirmed findings* and
+*The Displays module can mirror*, tested by `test/hotplug-rules/`.
+Finding 8's docking policy can now be set entirely in TDE's own UI.
+
+What is open, and what each waits on:
+
+- **Submitting upstream:** Gitea access and the holder's sign-off.
+  PRs 8 to 10 and 13 to 17 carry none. PRs 11 and 12 carry an earlier
+  sign-off that the holder should confirm.
+- **Installing here:** root, disk space for a 14.2 package build (`/`
+  and `/home` both have under 4 GB free), or the holder's go-ahead to
+  run the built programs in the live session.
+- **The holder's decisions:** finding 3, the lock layer (see *Open
+  questions*), and the panel-off questions under *Switching off the
+  internal panel*.
+- **A trigger or hardware:** finding 6 needs a trigger or a trace of
+  the live session. tdelauncher needs the fault to recur. The lid paths
+  and finding 8 end to end need a laptop with an external display.
+  ConsoleKit2 needs a machine that runs it.
+
 ## Scope and layout
 
     README.md           what the fixes are worth, for a reader new to TDE
